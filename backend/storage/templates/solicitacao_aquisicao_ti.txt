@@ -1,0 +1,33 @@
+SOLICITAÇÃO DE AQUISIÇÃO DE TECNOLOGIA DA INFORMAÇÃO
+
+Número da Solicitação: {{numero_solicitacao}}
+Data da Solicitação: {{data_solicitacao}}
+
+Solicitante: {{solicitante}}
+Área Solicitante: {{area_solicitante}}
+
+Fornecedor: {{fornecedor}}
+Valor da Aquisição: {{valor}}
+Justificativa: {{justificativa}}
+Categoria do Produto: {{categoria_produto}}
+
+Aprovação CADE: {{aprovacao_cade}}
+
+Observações:
+{{observacoes}}
+
+---
+
+DECLARAÇÃO
+
+Declaro, sob as penas da lei, que as informações fornecidas nesta solicitação são verdadeiras e exatas,
+de acordo com as normas internas da Organização Bradesco, especialmente a Política de Compras
+e a Norma do Programa de Compliance Concorrencial.
+
+Assinatura do Solicitante: _____________________
+Data: {{data_solicitacao}}
+
+---
+Documento gerado pelo ABIS - Agentic Banking Intelligence System
+Versão: 1.0
+Base normativa: Política de Compras da Organização Bradesco / Norma do Programa de Compliance Concorrencial
