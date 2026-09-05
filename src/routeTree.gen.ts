@@ -13,6 +13,7 @@ import { Route as IndexRouteImport } from './routes/index'
 import { Route as AppRouteImport } from './routes/app'
 import { Route as AppIndexRouteImport } from './routes/app.index'
 import { Route as AppCopilotRouteImport } from './routes/app.copilot'
+import { Route as AppHistoricoRouteImport } from './routes/app.historico'
 
 const IndexRoute = IndexRouteImport.update({
   id: '/',
@@ -34,16 +35,23 @@ const AppCopilotRoute = AppCopilotRouteImport.update({
   path: '/copilot',
   getParentRoute: () => AppRoute,
 } as any)
+const AppHistoricoRoute = AppHistoricoRouteImport.update({
+  id: '/historico',
+  path: '/historico',
+  getParentRoute: () => AppRoute,
+} as any)
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
   '/app': typeof AppRouteWithChildren
   '/app/copilot': typeof AppCopilotRoute
+  '/app/historico': typeof AppHistoricoRoute
   '/app/': typeof AppIndexRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
   '/app/copilot': typeof AppCopilotRoute
+  '/app/historico': typeof AppHistoricoRoute
   '/app': typeof AppIndexRoute
 }
 export interface FileRoutesById {
@@ -51,14 +59,15 @@ export interface FileRoutesById {
   '/': typeof IndexRoute
   '/app': typeof AppRouteWithChildren
   '/app/copilot': typeof AppCopilotRoute
+  '/app/historico': typeof AppHistoricoRoute
   '/app/': typeof AppIndexRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
-  fullPaths: '/' | '/app' | '/app/copilot' | '/app/'
+  fullPaths: '/' | '/app' | '/app/copilot' | '/app/historico' | '/app/'
   fileRoutesByTo: FileRoutesByTo
-  to: '/' | '/app/copilot' | '/app'
-  id: '__root__' | '/' | '/app' | '/app/copilot' | '/app/'
+  to: '/' | '/app/copilot' | '/app/historico' | '/app'
+  id: '__root__' | '/' | '/app' | '/app/copilot' | '/app/historico' | '/app/'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
@@ -96,16 +105,25 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AppCopilotRouteImport
       parentRoute: typeof AppRoute
     }
+    '/app/historico': {
+      id: '/app/historico'
+      path: '/historico'
+      fullPath: '/app/historico'
+      preLoaderRoute: typeof AppHistoricoRouteImport
+      parentRoute: typeof AppRoute
+    }
   }
 }
 
 interface AppRouteChildren {
   AppCopilotRoute: typeof AppCopilotRoute
+  AppHistoricoRoute: typeof AppHistoricoRoute
   AppIndexRoute: typeof AppIndexRoute
 }
 
 const AppRouteChildren: AppRouteChildren = {
   AppCopilotRoute: AppCopilotRoute,
+  AppHistoricoRoute: AppHistoricoRoute,
   AppIndexRoute: AppIndexRoute,
 }
 
