@@ -16,7 +16,7 @@ const sizes = {
 export function BrandLogo({ className, inverted = false, size = "md" }: BrandLogoProps) {
   const s = sizes[size];
   return (
-    <div className={cn("flex items-center gap-3", className)} aria-label="B-Smart Copilot">
+    <div className={cn("flex items-center gap-3", className)} aria-label="ABIS">
       <div
         aria-hidden="true"
         className={cn(
@@ -25,7 +25,7 @@ export function BrandLogo({ className, inverted = false, size = "md" }: BrandLog
           s.mark,
         )}
       >
-        B
+        A
       </div>
       <div className="flex flex-col leading-none">
         <span
@@ -35,7 +35,7 @@ export function BrandLogo({ className, inverted = false, size = "md" }: BrandLog
             inverted ? "text-hero-foreground" : "text-foreground",
           )}
         >
-          B-Smart <span className="text-brand">Copilot</span>
+          ABIS
         </span>
         <span
           className={cn(
@@ -43,7 +43,7 @@ export function BrandLogo({ className, inverted = false, size = "md" }: BrandLog
             inverted ? "text-hero-foreground/60" : "text-muted-foreground",
           )}
         >
-          Assistente corporativo
+          Agentic Banking Intelligence System
         </span>
       </div>
     </div>

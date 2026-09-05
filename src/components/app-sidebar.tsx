@@ -20,7 +20,7 @@ import type { Session } from "@/lib/auth";
 
 const navItems = [
   { to: "/app", label: "Dashboard", icon: LayoutDashboard, exact: true },
-  { to: "/app/copilot", label: "Copilot", icon: Bot, exact: false },
+  { to: "/app/copilot", label: "ABIS", icon: Bot, exact: false },
   { to: "/app/historico", label: "Histórico", icon: History, exact: false },
   { to: "/app/perfil", label: "Perfil", icon: UserRound, exact: false },
 ] as const;
@@ -35,9 +35,9 @@ export function AppSidebar({ session, onSignOut }: { session: Session; onSignOut
         {collapsed ? (
           <div
             className="mx-auto grid size-8 place-items-center rounded-lg bg-brand font-display text-sm font-extrabold text-brand-foreground"
-            aria-label="B-Smart Copilot"
+            aria-label="ABIS"
           >
-            B
+            A
           </div>
         ) : (
           <BrandLogo size="sm" />

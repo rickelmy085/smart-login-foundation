@@ -16,15 +16,15 @@ import { getSession, login, saveSession } from "@/lib/auth";
 export const Route = createFileRoute("/")({
   head: () => ({
     meta: [
-      { title: "Entrar — B-Smart Copilot" },
+      { title: "Entrar — ABIS" },
       {
         name: "description",
-        content: "Acesse o B-Smart Copilot, o assistente corporativo inteligente, com seu RE e senha.",
+        content: "Acesse o ABIS — Agentic Banking Intelligence System com seu RE e senha.",
       },
-      { property: "og:title", content: "Entrar — B-Smart Copilot" },
+      { property: "og:title", content: "Entrar — ABIS" },
       {
         property: "og:description",
-        content: "Acesse o B-Smart Copilot, o assistente corporativo inteligente, com seu RE e senha.",
+        content: "Acesse o ABIS — Agentic Banking Intelligence System com seu RE e senha.",
       },
     ],
   }),
@@ -32,9 +32,9 @@ export const Route = createFileRoute("/")({
 });
 
 const highlights = [
-  { icon: Sparkles, title: "Respostas contextualizadas", text: "Conhecimento interno ao seu alcance." },
-  { icon: ShieldCheck, title: "Segurança corporativa", text: "Acesso restrito a colaboradores." },
-  { icon: Zap, title: "Produtividade", text: "Menos busca, mais decisão." },
+  { icon: Sparkles, title: "Inteligência operacional", text: "Conhecimento corporativo em linguagem natural." },
+  { icon: ShieldCheck, title: "Segurança bancária", text: "Acesso restrito a colaboradores autorizados." },
+  { icon: Zap, title: "Produtividade", text: "Menos busca, mais decisão no dia a dia." },
 ];
 
 function LoginPage() {
@@ -46,7 +46,6 @@ function LoginPage() {
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
 
-  // Already signed in? Skip the form.
   useEffect(() => {
     if (getSession()) navigate({ to: "/app", replace: true });
   }, [navigate]);
@@ -66,7 +65,7 @@ function LoginPage() {
       return;
     }
     saveSession(result.session, remember);
-    toast.success(`Bem-vindo, ${result.session.name.split(" ")[0]}!`);
+    toast.success(`Bem-vindo ao ABIS, ${result.session.name.split(" ")[0]}!`);
     navigate({ to: "/app", replace: true });
   }
 
@@ -92,11 +91,11 @@ function LoginPage() {
             MVP · Etapa 1
           </p>
           <h2 className="text-4xl font-bold leading-tight xl:text-5xl">
-            Seu copiloto para decisões mais rápidas no dia a dia.
+            Conhecimento certo. No momento certo.
           </h2>
           <p className="mt-4 text-base text-hero-foreground/75">
-            Centralize conhecimento, acelere respostas e mantenha o padrão da empresa em cada
-            interação.
+            Sistema inteligente para facilitar o acesso ao conhecimento operacional e apoiar
+            decisões no ambiente bancário.
           </p>
 
           <ul className="mt-10 space-y-4">
@@ -115,7 +114,7 @@ function LoginPage() {
         </div>
 
         <p className="relative text-xs text-hero-foreground/50">
-          © {new Date().getFullYear()} B-Smart. Uso interno e confidencial.
+          © {new Date().getFullYear()} ABIS. Uso interno e confidencial.
         </p>
       </aside>
 

@@ -1,4 +1,4 @@
-# B-Smart Copilot — Roadmap
+# ABIS — Roadmap
 
 ## Etapa 1
 - [x] Design system global (tokens claro/escuro, fontes, utilitários)
@@ -13,5 +13,5 @@
 - [x] Navegação entre seções
 - [x] Alternância light/dark consistente no layout
 - [x] Histórico visual de consultas (mock)
-- [x] Área inicial/boas-vindas do Copilot (sem chat real)
+- [x] Área inicial/boas-vindas do ABIS (sem chat real)
 - [x] Perfil do usuário

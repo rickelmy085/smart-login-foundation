@@ -5,7 +5,7 @@
 @custom-variant dark (&:is(.dark *));
 
 /*
- * B-Smart Copilot — Design System
+ * ABIS — Agentic Banking Intelligence System
  *
  * Semantic tokens in oklch. Light and dark themes share the same token names;
  * the `.dark` class on <html> switches the palette (persisted in localStorage).
@@ -79,10 +79,9 @@
   --popover: oklch(1 0 0);
   --popover-foreground: oklch(0.2 0.03 255);
 
-  /* Deep corporate navy */
-  --primary: oklch(0.32 0.09 258);
+  --primary: oklch(0.42 0.2 25);
   --primary-foreground: oklch(0.985 0.004 240);
-  --primary-glow: oklch(0.55 0.14 255);
+  --primary-glow: oklch(0.55 0.22 25);
   --hero-foreground: oklch(0.985 0.004 240);
 
   --secondary: oklch(0.95 0.01 245);
@@ -92,9 +91,8 @@
   --accent: oklch(0.94 0.02 235);
   --accent-foreground: oklch(0.3 0.06 255);
 
-  /* Brand highlight: electric teal */
-  --brand: oklch(0.72 0.14 195);
-  --brand-foreground: oklch(0.17 0.03 255);
+  --brand: oklch(0.42 0.2 25);
+  --brand-foreground: oklch(0.985 0.004 240);
 
   --success: oklch(0.62 0.15 155);
   --success-foreground: oklch(0.985 0 0);
@@ -108,14 +106,14 @@
   --ring: oklch(0.6 0.12 250);
 
   --chart-1: oklch(0.55 0.14 255);
-  --chart-2: oklch(0.72 0.14 195);
+  --chart-2: oklch(0.42 0.2 25);
   --chart-3: oklch(0.62 0.15 155);
   --chart-4: oklch(0.78 0.16 75);
   --chart-5: oklch(0.58 0.22 27);
 
   --sidebar: oklch(0.975 0.006 245);
   --sidebar-foreground: oklch(0.2 0.03 255);
-  --sidebar-primary: oklch(0.32 0.09 258);
+  --sidebar-primary: oklch(0.42 0.2 25);
   --sidebar-primary-foreground: oklch(0.985 0.004 240);
   --sidebar-accent: oklch(0.94 0.02 235);
   --sidebar-accent-foreground: oklch(0.3 0.06 255);
@@ -124,9 +122,9 @@
 
   --gradient-hero: linear-gradient(
     140deg,
-    oklch(0.24 0.08 262) 0%,
-    oklch(0.32 0.1 256) 45%,
-    oklch(0.4 0.12 220) 100%
+    oklch(0.18 0.06 25) 0%,
+    oklch(0.28 0.1 25) 45%,
+    oklch(0.38 0.12 25) 100%
   );
   --shadow-elegant: 0 20px 50px -20px color-mix(in oklab, var(--primary) 35%, transparent);
   --shadow-panel: 0 1px 2px color-mix(in oklab, var(--foreground) 6%, transparent),
@@ -141,9 +139,9 @@
   --popover: oklch(0.2 0.03 258);
   --popover-foreground: oklch(0.95 0.008 240);
 
-  --primary: oklch(0.8 0.12 200);
+  --primary: oklch(0.7 0.18 25);
   --primary-foreground: oklch(0.16 0.03 255);
-  --primary-glow: oklch(0.7 0.14 205);
+  --primary-glow: oklch(0.75 0.2 25);
   --hero-foreground: oklch(0.985 0.004 240);
 
   --secondary: oklch(0.26 0.03 258);
@@ -153,7 +151,7 @@
   --accent: oklch(0.28 0.04 250);
   --accent-foreground: oklch(0.95 0.008 240);
 
-  --brand: oklch(0.78 0.13 195);
+  --brand: oklch(0.7 0.18 25);
   --brand-foreground: oklch(0.16 0.03 255);
 
   --success: oklch(0.7 0.15 155);
@@ -168,14 +166,14 @@
   --ring: oklch(0.7 0.12 205);
 
   --chart-1: oklch(0.7 0.14 255);
-  --chart-2: oklch(0.78 0.13 195);
+  --chart-2: oklch(0.7 0.18 25);
   --chart-3: oklch(0.7 0.15 155);
   --chart-4: oklch(0.82 0.16 80);
   --chart-5: oklch(0.68 0.19 25);
 
   --sidebar: oklch(0.18 0.028 258);
   --sidebar-foreground: oklch(0.95 0.008 240);
-  --sidebar-primary: oklch(0.8 0.12 200);
+  --sidebar-primary: oklch(0.7 0.18 25);
   --sidebar-primary-foreground: oklch(0.16 0.03 255);
   --sidebar-accent: oklch(0.28 0.04 250);
   --sidebar-accent-foreground: oklch(0.95 0.008 240);
@@ -184,9 +182,9 @@
 
   --gradient-hero: linear-gradient(
     140deg,
-    oklch(0.17 0.04 262) 0%,
-    oklch(0.24 0.07 256) 45%,
-    oklch(0.3 0.09 220) 100%
+    oklch(0.12 0.04 25) 0%,
+    oklch(0.2 0.08 25) 45%,
+    oklch(0.28 0.1 25) 100%
   );
   --shadow-elegant: 0 20px 50px -20px oklch(0 0 0 / 60%);
   --shadow-panel: 0 1px 2px oklch(0 0 0 / 30%), 0 12px 32px -16px oklch(0 0 0 / 50%);

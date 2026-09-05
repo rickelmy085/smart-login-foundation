@@ -10,13 +10,13 @@ import { suggestedPrompts } from "@/lib/mock-data";
 export const Route = createFileRoute("/app/copilot")({
   head: () => ({
     meta: [
-      { title: "Copilot — B-Smart Copilot" },
-      { name: "description", content: "Área inicial do assistente B-Smart Copilot." },
-      { property: "og:title", content: "Copilot — B-Smart Copilot" },
-      { property: "og:description", content: "Área inicial do assistente B-Smart Copilot." },
+      { title: "ABIS — Agentic Banking Intelligence System" },
+      { name: "description", content: "Área inicial do assistente inteligente ABIS." },
+      { property: "og:title", content: "ABIS — Agentic Banking Intelligence System" },
+      { property: "og:description", content: "Área inicial do assistente inteligente ABIS." },
     ],
   }),
-  component: CopilotPage,
+  component: AbisPage,
 });
 
 const capabilities = [
@@ -25,7 +25,7 @@ const capabilities = [
   { title: "Orientar fluxos", text: "Passo a passo de processos internos." },
 ];
 
-function CopilotPage() {
+function AbisPage() {
   const [value, setValue] = useState("");
 
   function submit(e?: React.FormEvent) {
@@ -42,10 +42,9 @@ function CopilotPage() {
         <span className="grid size-16 place-items-center rounded-2xl bg-gradient-hero text-hero-foreground shadow-elegant">
           <Bot className="size-8" aria-hidden="true" />
         </span>
-        <h2 className="mt-6 text-2xl font-bold sm:text-3xl">Olá! Sou o B-Smart Copilot.</h2>
+        <h2 className="mt-6 text-2xl font-bold sm:text-3xl">Olá. Como posso ajudar hoje?</h2>
         <p className="mt-2 max-w-md text-sm text-muted-foreground">
-          Pergunte sobre políticas, processos e documentos internos. Respondo com base no
-          conhecimento corporativo e indico as fontes.
+          Consulte conhecimento corporativo, normativos e informações operacionais em linguagem natural.
         </p>
 
         <ul className="mt-8 grid w-full gap-3 sm:grid-cols-3">
@@ -94,7 +93,7 @@ function CopilotPage() {
               submit();
             }
           }}
-          placeholder="Pergunte algo ao Copilot…"
+          placeholder="Pergunte algo ao ABIS…"
           rows={2}
           className="min-h-0 resize-none border-0 bg-transparent shadow-none focus-visible:ring-0"
         />

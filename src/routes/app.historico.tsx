@@ -11,10 +11,10 @@ import { historyItems, statusLabels, topicColors, type QueryStatus } from "@/lib
 export const Route = createFileRoute("/app/historico")({
   head: () => ({
     meta: [
-      { title: "Histórico — B-Smart Copilot" },
-      { name: "description", content: "Histórico visual das suas consultas ao B-Smart Copilot." },
-      { property: "og:title", content: "Histórico — B-Smart Copilot" },
-      { property: "og:description", content: "Histórico visual das suas consultas ao B-Smart Copilot." },
+      { title: "Histórico — ABIS" },
+      { name: "description", content: "Histórico visual das suas consultas ao ABIS." },
+      { property: "og:title", content: "Histórico — ABIS" },
+      { property: "og:description", content: "Histórico visual das suas consultas ao ABIS." },
     ],
   }),
   component: HistoryPage,

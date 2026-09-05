@@ -18,10 +18,10 @@ import { cn } from "@/lib/utils";
 export const Route = createFileRoute("/app/perfil")({
   head: () => ({
     meta: [
-      { title: "Meu perfil — B-Smart Copilot" },
-      { name: "description", content: "Dados do colaborador e preferências do B-Smart Copilot." },
-      { property: "og:title", content: "Meu perfil — B-Smart Copilot" },
-      { property: "og:description", content: "Dados do colaborador e preferências do B-Smart Copilot." },
+      { title: "Meu perfil — ABIS" },
+      { name: "description", content: "Dados do colaborador e preferências do ABIS." },
+      { property: "og:title", content: "Meu perfil — ABIS" },
+      { property: "og:description", content: "Dados do colaborador e preferências do ABIS." },
     ],
   }),
   component: ProfilePage,
@@ -71,7 +71,7 @@ function ProfilePage() {
           <Field label="Nome completo" value={session.name} />
           <Field label="RE" value={session.re} />
           <Field label="Cargo" value={session.role} />
-          <Field label="E-mail corporativo" value={`re${session.re}@bsmart.com.br`} />
+          <Field label="E-mail corporativo" value={`re${session.re}@abis.com.br`} />
           <Field label="Último acesso" value={dateFmt.format(new Date(session.signedInAt))} />
           <Field label="Perfil de acesso" value="Colaborador" />
         </CardContent>
@@ -80,7 +80,7 @@ function ProfilePage() {
       <Card className="shadow-panel">
         <CardHeader>
           <CardTitle className="text-base">Preferências</CardTitle>
-          <CardDescription>Personalize sua experiência no Copilot.</CardDescription>
+          <CardDescription>Personalize sua experiência no ABIS.</CardDescription>
         </CardHeader>
         <CardContent className="space-y-6">
           <fieldset>

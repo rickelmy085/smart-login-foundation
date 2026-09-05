@@ -11,10 +11,10 @@ import { useEffect, useState } from "react";
 export const Route = createFileRoute("/app/")({
   head: () => ({
     meta: [
-      { title: "Dashboard — B-Smart Copilot" },
-      { name: "description", content: "Visão geral das suas consultas e atalhos do B-Smart Copilot." },
-      { property: "og:title", content: "Dashboard — B-Smart Copilot" },
-      { property: "og:description", content: "Visão geral das suas consultas e atalhos do B-Smart Copilot." },
+      { title: "Dashboard — ABIS" },
+      { name: "description", content: "Visão geral das suas consultas e atalhos do ABIS." },
+      { property: "og:title", content: "Dashboard — ABIS" },
+      { property: "og:description", content: "Visão geral das suas consultas e atalhos do ABIS." },
     ],
   }),
   component: DashboardPage,
@@ -55,12 +55,12 @@ function DashboardPage() {
               O que você precisa resolver hoje?
             </h2>
             <p className="mt-2 text-sm text-hero-foreground/75">
-              Seu copiloto está pronto para consultar políticas, procedimentos e documentos internos.
+              Consulte políticas, normativos e conhecimento operacional no ABIS.
             </p>
           </div>
           <Button asChild size="lg" variant="secondary" className="shrink-0 bg-brand text-brand-foreground hover:bg-brand/90">
             <Link to="/app/copilot">
-              <Sparkles aria-hidden="true" /> Abrir o Copilot
+              <Sparkles aria-hidden="true" /> Abrir o ABIS
             </Link>
           </Button>
         </div>
@@ -114,8 +114,8 @@ function DashboardPage() {
         <Card className="shadow-panel lg:col-span-2">
           <CardHeader className="flex flex-row items-center justify-between space-y-0">
             <div>
-              <CardTitle className="text-base">Consultas recentes</CardTitle>
-              <CardDescription>Suas últimas interações com o Copilot</CardDescription>
+              <CardTitle className="text-base">Interações recentes</CardTitle>
+              <CardDescription>Suas últimas interações com o ABIS</CardDescription>
             </div>
             <Button asChild variant="ghost" size="sm">
               <Link to="/app/historico">

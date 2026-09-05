@@ -12,7 +12,7 @@ export const Route = createFileRoute("/app")({
 
 const titles: Record<string, string> = {
   "/app": "Dashboard",
-  "/app/copilot": "Copilot",
+  "/app/copilot": "ABIS",
   "/app/historico": "Histórico de consultas",
   "/app/perfil": "Meu perfil",
 };
@@ -34,7 +34,7 @@ function AppLayout() {
     <SidebarProvider>
       <AppSidebar session={session} onSignOut={signOut} />
       <SidebarInset className="min-w-0">
-        <AppHeader title={titles[pathname] ?? "B-Smart Copilot"} session={session} onSignOut={signOut} />
+        <AppHeader title={titles[pathname] ?? "ABIS"} session={session} onSignOut={signOut} />
         <main className="flex-1 p-4 sm:p-6 lg:p-8">
           <Outlet />
         </main>
