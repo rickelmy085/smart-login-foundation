@@ -36,7 +36,9 @@ function greeting() {
 
 function DashboardPage() {
   const [firstName, setFirstName] = useState("");
-  useEffect(() => setFirstName(getSession()?.name.split(" ")[0] ?? ""), []);
+  useEffect(() => {
+    getSession().then((s) => setFirstName(s?.name.split(" ")[0] ?? ""));
+  }, []);
   const max = Math.max(...weeklyActivity.map((d) => d.consultas));
   const recent = historyItems.slice(0, 4);
 

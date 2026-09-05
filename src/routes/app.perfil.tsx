@@ -39,9 +39,10 @@ function ProfilePage() {
   const [session, setSession] = useState<Session | null>(null);
   const { theme, setTheme } = useTheme();
   const [notify, setNotify] = useState(true);
-  const [digest, setDigest] = useState(false);
 
-  useEffect(() => setSession(getSession()), []);
+  useEffect(() => {
+    getSession().then(setSession);
+  }, []);
   if (!session) return null;
 
   return (
@@ -71,7 +72,7 @@ function ProfilePage() {
           <Field label="Nome completo" value={session.name} />
           <Field label="RE" value={session.re} />
           <Field label="Cargo" value={session.role} />
-          <Field label="E-mail corporativo" value={`re${session.re}@abis.com.br`} />
+          <Field label="E-mail corporativo" value={`re${session.re}@bradesco.com.br`} />
           <Field label="Último acesso" value={dateFmt.format(new Date(session.signedInAt))} />
           <Field label="Perfil de acesso" value="Colaborador" />
         </CardContent>
@@ -119,13 +120,6 @@ function ProfilePage() {
               description="Avisos sobre respostas concluídas e novidades."
               checked={notify}
               onCheckedChange={setNotify}
-            />
-            <ToggleRow
-              id="digest"
-              label="Resumo semanal por e-mail"
-              description="Receba um resumo das suas consultas toda segunda-feira."
-              checked={digest}
-              onCheckedChange={setDigest}
             />
           </div>
 

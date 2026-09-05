@@ -24,6 +24,48 @@ Continue developing this project in the [Lovable editor](https://lovable.dev/pro
 - **Stay in sync**: every change made in Lovable is committed straight to this repository.
 - **Full ownership**: this code is yours. Push to `main` on GitHub and your changes sync back into Lovable, ready for your next prompt.
 
+## Backend (Go)
+
+O backend do ABIS fica na pasta `backend/` e expõe a API de autenticação usada pelo frontend.
+
+### Estrutura
+
+- `backend/main.go`: entrada do servidor HTTP.
+- `backend/internal/config`: carrega variáveis de ambiente e configura porta, banco e JWT.
+- `backend/internal/database`: conexão com SQLite e migrations.
+- `backend/internal/models`: contratos de request/response e entidades.
+- `backend/internal/repository`: acesso a dados de funcionários e sessões.
+- `backend/internal/service`: regras de login, validação de senha e JWT.
+- `backend/internal/handler`: rotas HTTP.
+- `backend/internal/middleware`: injeção de segredo JWT e proteção de rotas.
+
+### Endpoints
+
+- `POST /api/login`: autentica RE e senha e retorna token JWT.
+- `GET /api/me`: retorna dados do funcionário autenticado.
+- `POST /api/logout`: encerra a sessão.
+
+### Como rodar
+
+```sh
+cd backend
+go mod tidy
+go run .
+```
+
+Por padrão o servidor sobe em `http://localhost:8081`.
+
+### Variáveis de ambiente
+
+- `PORT`: porta do servidor.
+- `DATABASE_PATH`: caminho do SQLite.
+- `JWT_SECRET`: segredo para assinar tokens.
+
+### Usuário demo
+
+- RE: `123456`
+- Senha: `demo123`
+
 ## Development
 
 Prefer working locally? You need Node.js and npm — [install with nvm](https://github.com/nvm-sh/nvm#installing-and-updating).
