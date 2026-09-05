@@ -14,6 +14,7 @@ import { Route as AppRouteImport } from './routes/app'
 import { Route as AppIndexRouteImport } from './routes/app.index'
 import { Route as AppCopilotRouteImport } from './routes/app.copilot'
 import { Route as AppHistoricoRouteImport } from './routes/app.historico'
+import { Route as AppPerfilRouteImport } from './routes/app.perfil'
 
 const IndexRoute = IndexRouteImport.update({
   id: '/',
@@ -40,18 +41,25 @@ const AppHistoricoRoute = AppHistoricoRouteImport.update({
   path: '/historico',
   getParentRoute: () => AppRoute,
 } as any)
+const AppPerfilRoute = AppPerfilRouteImport.update({
+  id: '/perfil',
+  path: '/perfil',
+  getParentRoute: () => AppRoute,
+} as any)
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
   '/app': typeof AppRouteWithChildren
   '/app/copilot': typeof AppCopilotRoute
   '/app/historico': typeof AppHistoricoRoute
+  '/app/perfil': typeof AppPerfilRoute
   '/app/': typeof AppIndexRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
   '/app/copilot': typeof AppCopilotRoute
   '/app/historico': typeof AppHistoricoRoute
+  '/app/perfil': typeof AppPerfilRoute
   '/app': typeof AppIndexRoute
 }
 export interface FileRoutesById {
@@ -60,14 +68,23 @@ export interface FileRoutesById {
   '/app': typeof AppRouteWithChildren
   '/app/copilot': typeof AppCopilotRoute
   '/app/historico': typeof AppHistoricoRoute
+  '/app/perfil': typeof AppPerfilRoute
   '/app/': typeof AppIndexRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
-  fullPaths: '/' | '/app' | '/app/copilot' | '/app/historico' | '/app/'
+  fullPaths:
+    '/' | '/app' | '/app/copilot' | '/app/historico' | '/app/perfil' | '/app/'
   fileRoutesByTo: FileRoutesByTo
-  to: '/' | '/app/copilot' | '/app/historico' | '/app'
-  id: '__root__' | '/' | '/app' | '/app/copilot' | '/app/historico' | '/app/'
+  to: '/' | '/app/copilot' | '/app/historico' | '/app/perfil' | '/app'
+  id:
+    | '__root__'
+    | '/'
+    | '/app'
+    | '/app/copilot'
+    | '/app/historico'
+    | '/app/perfil'
+    | '/app/'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
@@ -112,18 +129,27 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AppHistoricoRouteImport
       parentRoute: typeof AppRoute
     }
+    '/app/perfil': {
+      id: '/app/perfil'
+      path: '/perfil'
+      fullPath: '/app/perfil'
+      preLoaderRoute: typeof AppPerfilRouteImport
+      parentRoute: typeof AppRoute
+    }
   }
 }
 
 interface AppRouteChildren {
   AppCopilotRoute: typeof AppCopilotRoute
   AppHistoricoRoute: typeof AppHistoricoRoute
+  AppPerfilRoute: typeof AppPerfilRoute
   AppIndexRoute: typeof AppIndexRoute
 }
 
 const AppRouteChildren: AppRouteChildren = {
   AppCopilotRoute: AppCopilotRoute,
   AppHistoricoRoute: AppHistoricoRoute,
+  AppPerfilRoute: AppPerfilRoute,
   AppIndexRoute: AppIndexRoute,
 }
 
