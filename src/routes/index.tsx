@@ -73,7 +73,7 @@ function LoginPage() {
   return (
     <div className="grid min-h-svh lg:grid-cols-[1.1fr_1fr]">
       {/* Brand panel */}
-      <aside className="relative hidden overflow-hidden bg-gradient-hero text-primary-foreground lg:flex lg:flex-col lg:justify-between lg:p-12">
+      <aside className="relative hidden overflow-hidden bg-gradient-hero text-hero-foreground lg:flex lg:flex-col lg:justify-between lg:p-12">
         <div className="grid-overlay pointer-events-none absolute inset-0" aria-hidden="true" />
         <div
           className="pointer-events-none absolute -right-32 -top-32 size-[28rem] rounded-full bg-brand/25 blur-3xl"
@@ -87,14 +87,14 @@ function LoginPage() {
         <BrandLogo inverted size="md" className="relative" />
 
         <div className="relative max-w-lg">
-          <p className="mb-4 inline-flex items-center gap-2 rounded-full border border-primary-foreground/20 bg-primary-foreground/10 px-3 py-1 text-xs font-semibold uppercase tracking-widest">
+          <p className="mb-4 inline-flex items-center gap-2 rounded-full border border-hero-foreground/20 bg-hero-foreground/10 px-3 py-1 text-xs font-semibold uppercase tracking-widest">
             <span className="size-1.5 rounded-full bg-brand" aria-hidden="true" />
             MVP · Etapa 1
           </p>
           <h2 className="text-4xl font-bold leading-tight xl:text-5xl">
             Seu copiloto para decisões mais rápidas no dia a dia.
           </h2>
-          <p className="mt-4 text-base text-primary-foreground/75">
+          <p className="mt-4 text-base text-hero-foreground/75">
             Centralize conhecimento, acelere respostas e mantenha o padrão da empresa em cada
             interação.
           </p>
@@ -102,19 +102,19 @@ function LoginPage() {
           <ul className="mt-10 space-y-4">
             {highlights.map(({ icon: Icon, title, text }) => (
               <li key={title} className="flex items-start gap-3">
-                <span className="grid size-9 shrink-0 place-items-center rounded-lg bg-primary-foreground/10">
+                <span className="grid size-9 shrink-0 place-items-center rounded-lg bg-hero-foreground/10">
                   <Icon className="size-4 text-brand" aria-hidden="true" />
                 </span>
                 <div>
                   <p className="font-semibold">{title}</p>
-                  <p className="text-sm text-primary-foreground/70">{text}</p>
+                  <p className="text-sm text-hero-foreground/70">{text}</p>
                 </div>
               </li>
             ))}
           </ul>
         </div>
 
-        <p className="relative text-xs text-primary-foreground/50">
+        <p className="relative text-xs text-hero-foreground/50">
           © {new Date().getFullYear()} B-Smart. Uso interno e confidencial.
         </p>
       </aside>

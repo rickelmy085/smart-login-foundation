@@ -32,7 +32,7 @@ export function BrandLogo({ className, inverted = false, size = "md" }: BrandLog
           className={cn(
             "font-display font-bold tracking-tight",
             s.text,
-            inverted ? "text-primary-foreground" : "text-foreground",
+            inverted ? "text-hero-foreground" : "text-foreground",
           )}
         >
           B-Smart <span className="text-brand">Copilot</span>
@@ -40,7 +40,7 @@ export function BrandLogo({ className, inverted = false, size = "md" }: BrandLog
         <span
           className={cn(
             "mt-1 text-[10px] font-semibold uppercase tracking-[0.2em]",
-            inverted ? "text-primary-foreground/60" : "text-muted-foreground",
+            inverted ? "text-hero-foreground/60" : "text-muted-foreground",
           )}
         >
           Assistente corporativo

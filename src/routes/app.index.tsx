@@ -43,18 +43,18 @@ function DashboardPage() {
   return (
     <div className="mx-auto max-w-7xl space-y-6">
       {/* Welcome */}
-      <section className="relative overflow-hidden rounded-2xl bg-gradient-hero p-6 text-primary-foreground shadow-elegant sm:p-8">
+      <section className="relative overflow-hidden rounded-2xl bg-gradient-hero p-6 text-hero-foreground shadow-elegant sm:p-8">
         <div className="grid-overlay pointer-events-none absolute inset-0" aria-hidden="true" />
         <div className="relative flex flex-col gap-6 md:flex-row md:items-end md:justify-between">
           <div className="max-w-xl">
-            <p className="text-sm font-medium text-primary-foreground/70">
+            <p className="text-sm font-medium text-hero-foreground/70">
               {greeting()}
               {firstName ? `, ${firstName}` : ""} 👋
             </p>
             <h2 className="mt-1 text-2xl font-bold sm:text-3xl">
               O que você precisa resolver hoje?
             </h2>
-            <p className="mt-2 text-sm text-primary-foreground/75">
+            <p className="mt-2 text-sm text-hero-foreground/75">
               Seu copiloto está pronto para consultar políticas, procedimentos e documentos internos.
             </p>
           </div>
@@ -92,10 +92,10 @@ function DashboardPage() {
             <CardDescription>Consultas realizadas por dia</CardDescription>
           </CardHeader>
           <CardContent>
-            <ul className="flex h-40 items-end gap-2" aria-label="Gráfico de consultas por dia">
+            <ul className="flex items-end gap-2" aria-label="Gráfico de consultas por dia">
               {weeklyActivity.map((d) => (
                 <li key={d.day} className="flex flex-1 flex-col items-center gap-2">
-                  <div className="flex w-full flex-1 items-end">
+                  <div className="flex h-28 w-full items-end">
                     <div
                       className="w-full rounded-t-md bg-primary/85 transition-[height] duration-500"
                       style={{ height: `${max ? (d.consultas / max) * 100 : 0}%`, minHeight: d.consultas ? 6 : 2 }}

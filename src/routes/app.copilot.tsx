@@ -39,7 +39,7 @@ function CopilotPage() {
   return (
     <div className="mx-auto flex min-h-[calc(100svh-8rem)] max-w-3xl flex-col">
       <div className="flex flex-1 flex-col items-center justify-center text-center">
-        <span className="grid size-16 place-items-center rounded-2xl bg-gradient-hero text-primary-foreground shadow-elegant">
+        <span className="grid size-16 place-items-center rounded-2xl bg-gradient-hero text-hero-foreground shadow-elegant">
           <Bot className="size-8" aria-hidden="true" />
         </span>
         <h2 className="mt-6 text-2xl font-bold sm:text-3xl">Olá! Sou o B-Smart Copilot.</h2>
