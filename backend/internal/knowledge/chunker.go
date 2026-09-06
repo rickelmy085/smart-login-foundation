@@ -1,6 +1,9 @@
 package knowledge
 
-import "strings"
+import (
+	"fmt" // debug prints
+	"strings"
+)
 
 // ChunkOptions define como o texto será dividido.
 // Defaults razoáveis: pedaços de ~800 chars com 100 de sobreposição.
@@ -35,12 +38,15 @@ func (o ChunkOptions) withDefaults() ChunkOptions {
 //   3) Empacota sentenças/palavras até preencher Size, depois emite o
 //      chunk e começa o próximo com Overlap caracteres deOverlap.
 func Split(text string, opt ChunkOptions) []Chunk {
+	fmt.Printf("[KNOWLEDGE] Split iniciado text_length=%d opt=%+v\n", len(text), opt)
 	opt = opt.withDefaults()
 	text = strings.TrimSpace(text)
 	if text == "" {
+		fmt.Println("[KNOWLEDGE] Split texto vazio")
 		return nil
 	}
 	if len([]rune(text)) <= opt.Size {
+		fmt.Printf("[KNOWLEDGE] Split texto cabe em 1 chunk\n")
 		return []Chunk{{Ord: 0, Content: text, CharStart: 0, CharEnd: len([]byte(text))}}
 	}
 
@@ -89,5 +95,6 @@ func Split(text string, opt ChunkOptions) []Chunk {
 		start += step
 	}
 
+	fmt.Printf("[KNOWLEDGE] Split finalizado chunks=%d\n", len(chunks))
 	return chunks
 }

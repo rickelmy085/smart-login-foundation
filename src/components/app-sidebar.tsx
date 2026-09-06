@@ -1,5 +1,5 @@
 import { Link } from "@tanstack/react-router";
-import { Bot, History, LayoutDashboard, LogOut, UserRound } from "lucide-react";
+import { Bot, History, LayoutDashboard, LogOut, UserRound, FileText } from "lucide-react";
 
 import { BrandLogo } from "@/components/brand-logo";
 import {
@@ -21,6 +21,7 @@ import type { Session } from "@/lib/auth";
 const navItems = [
   { to: "/app", label: "Dashboard", icon: LayoutDashboard, exact: true },
   { to: "/app/copilot", label: "ABIS", icon: Bot, exact: false },
+  { to: "/app/tarefas", label: "Tarefas", icon: FileText, exact: false },
   { to: "/app/historico", label: "Histórico", icon: History, exact: false },
   { to: "/app/perfil", label: "Perfil", icon: UserRound, exact: false },
 ] as const;

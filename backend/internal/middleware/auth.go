@@ -4,7 +4,9 @@
 package middleware
 
 import (
+	"context"
 	"encoding/json"
+	"fmt" // debug prints
 	"net/http"
 	"strings"
 
@@ -12,28 +14,31 @@ import (
 )
 
 // AuthMiddleware bloqueia requests sem token JWT válido.
-// Se válido, passa adiante (next.ServeHTTP).
-// Caso contrário, devolve 401 direto.
-//
-// Recebe o *service.AuthService para reusar a lógica de validação.
+// Se válido, injeta o employee_id no contexto e passa adiante.
 func AuthMiddleware(auth *service.AuthService) func(http.Handler) http.Handler {
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-			// Pega o segredo JWT (injetado por WithJWTSecret mais acima na pilha).
+			fmt.Println("[MIDDLEWARE] AuthMiddleware iniciado")
 			secret := r.Context().Value("jwt_secret").(string)
 			token := bearerToken(r)
 			if token == "" {
+				fmt.Println("[MIDDLEWARE] AuthMiddleware token ausente")
 				writeJSON(w, http.StatusUnauthorized, map[string]string{"error": "missing token"})
 				return
 			}
+			fmt.Printf("[MIDDLEWARE] AuthMiddleware token recebido length=%d\n", len(token))
 
-			// Reusa o Me() do service: ele já valida assinatura, sessão e expiração.
-			if _, err := auth.Me(r.Context(), token, []byte(secret)); err != nil {
+			res, err := auth.Me(r.Context(), token, []byte(secret))
+			if err != nil {
+				fmt.Printf("[MIDDLEWARE] AuthMiddleware token invalido: %v\n", err)
 				writeJSON(w, http.StatusUnauthorized, map[string]string{"error": "invalid or expired session"})
 				return
 			}
+			fmt.Printf("[MIDDLEWARE] AuthMiddleware token valido employeeID=%s\n", res.Employee.ID)
 
-			next.ServeHTTP(w, r)
+			ctx := r.Context()
+			ctx = context.WithValue(ctx, "employee_id", res.Employee.ID)
+			next.ServeHTTP(w, r.WithContext(ctx))
 		})
 	}
 }

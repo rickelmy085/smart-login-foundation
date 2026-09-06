@@ -1,111 +1,162 @@
-// Pacote principal (executável). Em Go, todo programa começa em package main
-// com uma função chamada main().
 package main
 
 import (
-	// Pacotes da biblioteca padrão:
-	"context"   // Usado para passar deadlines/cancelamento para o banco de dados.
-	"log/slog"  // Logger estruturado moderno do Go (substitui o "log" antigo).
-	"net/http"  // Servidor HTTP e tipos Request/Response/Handler.
-	"os"        // Funções do sistema operacional (variáveis de ambiente, Exit, etc.).
-
-	// Pacotes internos deste projeto. Cada um mora na pasta correspondente:
-	// config     = configurações (porta, segredo JWT, caminho do DB).
-	// database   = abre a conexão com o SQLite e roda migrações.
-	// handler    = camada HTTP que responde às requisições.
-	// middleware = interceptores de request (autenticação, logs).
-	// repository = camada de acesso ao banco (queries SQL).
-	// service    = regras de negócio (login, validação de sessão, etc.).
+	"context"
+	"database/sql"
+	"encoding/json"
+	"fmt"
+	"log/slog"
+	"net/http"
+	"os"
 	"time"
 
+	"github.com/bsmart/abis/internal/chat"
 	"github.com/bsmart/abis/internal/config"
 	"github.com/bsmart/abis/internal/database"
+	"github.com/bsmart/abis/internal/groq"
 	"github.com/bsmart/abis/internal/handler"
+	"github.com/bsmart/abis/internal/knowledge"
 	"github.com/bsmart/abis/internal/middleware"
 	"github.com/bsmart/abis/internal/repository"
 	"github.com/bsmart/abis/internal/service"
+	"github.com/bsmart/abis/internal/web"
 )
 
-// Função principal: o servidor é montado e iniciado aqui.
 func main() {
-	// 1) Lê configurações do ambiente (PORT, JWT_SECRET, DATABASE_PATH).
-	cfg := config.Load()
+	fmt.Println("[MAIN] Iniciando servidor ABIS")
 
-	// 2) Abre conexão com o SQLite. Se falhar, aborta.
+	if err := config.LoadEnvFile(".env"); err != nil {
+		fmt.Printf("[MAIN] Aviso ao carregar .env: %v\n", err)
+	}
+
+	cfg := config.Load()
+	fmt.Printf("[MAIN] Config carregada: porta=%s db=%s frontend=%s\n", cfg.Port, cfg.DatabasePath, cfg.FrontendURL)
+
 	db, err := database.Connect(cfg.DatabasePath)
 	if err != nil {
-		slog.Error("connect database", "error", err) // log estruturado
-		os.Exit(1)                                   // sai com código 1 = erro
-	}
-	// Garante que o banco será fechado quando main() terminar.
-	defer db.Close()
-
-	// 3) Cria as tabelas (se não existirem) e popula o usuário demo.
-	if err := database.Migrate(context.Background(), db); err != nil {
-		slog.Error("run migrations", "error", err)
+		fmt.Printf("[MAIN] Erro ao conectar banco: %v\n", err)
+		slog.Error("connect database", "error", err)
 		os.Exit(1)
 	}
+	defer db.Close()
+	fmt.Println("[MAIN] Banco conectado com sucesso")
 
-	// 4) Monta as camadas em ordem (de dentro pra fora):
-	//    repo → service → handler → rotas HTTP.
-	employeeRepo := repository.NewEmployeeRepo(db)        // SQL de employees
-	sessionRepo := repository.NewSessionRepo(db)          // SQL de sessions
-	authService := service.NewAuthService(employeeRepo, sessionRepo, 0) // regras de auth
-	authHandler := handler.NewAuthHandler(authService)    // expõe endpoints HTTP
+	ctx := context.Background()
+	for _, m := range []struct {
+		name string
+		fn   func(context.Context, *sql.DB) error
+	}{
+		{"Migrate", database.Migrate},
+		{"MigrateKnowledge", database.MigrateKnowledge},
+		{"MigrateWorkflow", database.MigrateWorkflow},
+		{"SeedWorkflowTemplates", database.SeedWorkflowTemplates},
+	} {
+		if err := m.fn(ctx, db); err != nil {
+			fmt.Printf("[MAIN] Erro em %s: %v\n", m.name, err)
+			slog.Error(m.name, "error", err)
+			os.Exit(1)
+		}
+		fmt.Printf("[MAIN] %s executada com sucesso\n", m.name)
+	}
 
-	// 5) Roteador HTTP (mux = multiplexador de rotas).
+	employeeRepo := repository.NewEmployeeRepo(db)
+	sessionRepo := repository.NewSessionRepo(db)
+	workflowRepo := repository.NewWorkflowRepo(db)
+	chatRepo := repository.NewChatRepo(db)
+
+	authService := service.NewAuthService(employeeRepo, sessionRepo, 0)
+	groqClient := groq.New(cfg.GroqAPIKey, cfg.GroqModel)
+	searcher := knowledge.NewSearcher(db)
+	webClient := web.NewClient()
+	chatService := chat.NewService(searcher, groqClient, webClient)
+	workflowService := service.NewWorkflowService(workflowRepo, searcher, groqClient)
+
+	authHandler := handler.NewAuthHandler(authService)
+	chatHandler := handler.NewChatHandler(chatService, workflowService, employeeRepo, chatRepo)
+	knowledgeHandler := handler.NewKnowledgeHandler(searcher)
+	workflowHandler := handler.NewWorkflowHandler(workflowService, workflowRepo)
+
 	mux := http.NewServeMux()
-	// Cada rota aponta para um método do handler.
+	mux.HandleFunc("/api/health", func(w http.ResponseWriter, r *http.Request) {
+		writeJSON(w, http.StatusOK, map[string]string{"status": "ok"})
+	})
 	mux.HandleFunc("/api/login", authHandler.Login)
-	mux.HandleFunc("/api/me", authHandler.Me)
 	mux.HandleFunc("/api/logout", authHandler.Logout)
+	mux.Handle("/api/me", middleware.AuthMiddleware(authService)(http.HandlerFunc(authHandler.Me)))
+	mux.Handle("/api/chat", middleware.AuthMiddleware(authService)(http.HandlerFunc(chatHandler.Chat)))
+	mux.Handle("/api/chat/generate-document", middleware.AuthMiddleware(authService)(http.HandlerFunc(chatHandler.GenerateDocument)))
+	mux.Handle("/api/search", middleware.AuthMiddleware(authService)(http.HandlerFunc(knowledgeHandler.Search)))
+	mux.Handle("/api/tasks", middleware.AuthMiddleware(authService)(http.HandlerFunc(workflowHandler.ListTasks)))
+	mux.Handle("/api/tasks/{id}", middleware.AuthMiddleware(authService)(http.HandlerFunc(workflowHandler.GetTask)))
+	mux.Handle("/api/tasks/{id}/process", middleware.AuthMiddleware(authService)(http.HandlerFunc(workflowHandler.ProcessTask)))
+	mux.Handle("/api/tasks/{id}/message", middleware.AuthMiddleware(authService)(http.HandlerFunc(workflowHandler.ProcessMessage)))
+	mux.Handle("/api/tasks/{id}/data", middleware.AuthMiddleware(authService)(http.HandlerFunc(workflowHandler.SetData)))
+	mux.Handle("/api/tasks/{id}/validate", middleware.AuthMiddleware(authService)(http.HandlerFunc(workflowHandler.ValidateTask)))
+	mux.Handle("/api/tasks/{id}/generate", middleware.AuthMiddleware(authService)(http.HandlerFunc(workflowHandler.GenerateDocument)))
+	mux.Handle("/api/tasks/{id}/sources", middleware.AuthMiddleware(authService)(http.HandlerFunc(workflowHandler.GetTaskSources)))
+	mux.Handle("/api/documents", middleware.AuthMiddleware(authService)(http.HandlerFunc(workflowHandler.ListDocuments)))
+	mux.Handle("/api/documents/{id}/sources", middleware.AuthMiddleware(authService)(http.HandlerFunc(workflowHandler.GetDocumentSources)))
+	mux.Handle("/api/documents/{id}/docx", middleware.AuthMiddleware(authService)(http.HandlerFunc(workflowHandler.DownloadDocx)))
+	mux.Handle("/api/documents/{id}/pdf", middleware.AuthMiddleware(authService)(http.HandlerFunc(workflowHandler.DownloadPdf)))
+	mux.Handle("/api/history", middleware.AuthMiddleware(authService)(http.HandlerFunc(workflowHandler.ListHistory)))
+	fmt.Println("[MAIN] Rotas registradas")
 
-	// 6) Empilha os middlewares. A ordem importa: o que está mais
-	//    à esquerda envolve o que está à direita.
-	//    Fluxo: request → CORS → log → injeta JWT secret → mux (rotas).
 	addr := ":" + cfg.Port
+	fmt.Printf("[MAIN] Iniciando servidor HTTP em %s\n", addr)
 	slog.Info("server started", "addr", addr)
 	if err := http.ListenAndServe(addr,
-		corsMiddleware(
+		corsMiddleware(cfg.FrontendURL)(
 			loggingMiddleware(
 				middleware.WithJWTSecret(cfg.JWTSecret)(mux),
 			),
 		),
 	); err != nil {
+		fmt.Printf("[MAIN] Erro no servidor HTTP: %v\n", err)
 		slog.Error("server stopped", "error", err)
 	}
 }
 
-// Middleware de CORS (Cross-Origin Resource Sharing).
-// Sem ele, o front-end em http://localhost:8080 não conseguiria chamar
-// a API em http://localhost:8081 (bloqueio do navegador).
-func corsMiddleware(next http.Handler) http.Handler {
-	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		// Cabeçalhos HTTP que o navegador precisa ver.
-		w.Header().Set("Access-Control-Allow-Origin", "http://localhost:8080")
-		w.Header().Set("Access-Control-Allow-Methods", "POST, GET, OPTIONS")
-		w.Header().Set("Access-Control-Allow-Headers", "Content-Type, Authorization")
+func corsMiddleware(allowedOrigin string) func(http.Handler) http.Handler {
+	return func(next http.Handler) http.Handler {
+		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			origin := r.Header.Get("Origin")
+			fmt.Printf("[CORS] Request %s %s origin=%s\n", r.Method, r.URL.Path, origin)
 
-		// Preflight request: o navegador envia OPTIONS antes de POST/GET
-		// com headers customizados. Respondemos OK e paramos.
-		if r.Method == "OPTIONS" {
-			w.WriteHeader(http.StatusOK)
-			return
-		}
-		// Segue para o próximo handler/middleware.
-		next.ServeHTTP(w, r)
-	})
+			if origin == "" {
+				origin = allowedOrigin
+			}
+
+			w.Header().Set("Access-Control-Allow-Origin", origin)
+			w.Header().Set("Access-Control-Allow-Methods", "POST, GET, OPTIONS")
+			w.Header().Set("Access-Control-Allow-Headers", "Content-Type, Authorization")
+			w.Header().Set("Access-Control-Allow-Credentials", "true")
+
+			if r.Method == "OPTIONS" {
+				fmt.Println("[CORS] Preflight OPTIONS respondido com 200")
+				w.WriteHeader(http.StatusOK)
+				return
+			}
+			next.ServeHTTP(w, r)
+		})
+	}
 }
 
-// Middleware que loga cada requisição com método, caminho e duração.
 func loggingMiddleware(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		start := time.Now()
-		next.ServeHTTP(w, r) // deixa a request passar
+		fmt.Printf("[LOG] Inicio request: %s %s\n", r.Method, r.URL.Path)
+		next.ServeHTTP(w, r)
 		slog.Info("request",
 			"method", r.Method,
 			"path", r.URL.Path,
 			"duration", time.Since(start),
 		)
+		fmt.Printf("[LOG] Fim request: %s %s duracao=%v\n", r.Method, r.URL.Path, time.Since(start))
 	})
+}
+
+func writeJSON(w http.ResponseWriter, status int, v any) {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(status)
+	_ = json.NewEncoder(w).Encode(v)
 }

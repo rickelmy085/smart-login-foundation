@@ -2,8 +2,9 @@ package handler
 
 import (
 	"encoding/json"
+	"fmt"
 	"net/http"
-	"path/filepath"
+	"os"
 	"strings"
 
 	"github.com/bsmart/abis/internal/models"
@@ -92,13 +93,6 @@ type ProcessMessageResponse struct {
 	MissingFields []service.MissingField `json:"missingFields,omitempty"`
 }
 
-type GenerateDocumentResponse struct {
-	DocumentRunID string `json:"documentRunId"`
-	Status        string `json:"status"`
-	DocxPath      string `json:"docxPath"`
-	PdfPath       string `json:"pdfPath"`
-}
-
 type DocumentRunResponse struct {
 	ID            string `json:"id"`
 	TemplateID    string `json:"templateId"`
@@ -111,25 +105,31 @@ type DocumentRunResponse struct {
 
 // POST /api/tasks
 func (h *WorkflowHandler) CreateTask(w http.ResponseWriter, r *http.Request) {
+	fmt.Println("[WORKFLOW] CreateTask iniciada")
 	var body CreateTaskRequest
 	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		fmt.Printf("[WORKFLOW] CreateTask erro decode JSON: %v\n", err)
 		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid JSON body"})
 		return
 	}
 
 	body.Question = strings.TrimSpace(body.Question)
 	if body.Question == "" {
+		fmt.Println("[WORKFLOW] CreateTask question vazia")
 		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "question is required"})
 		return
 	}
 
 	employeeID := r.Context().Value("employee_id").(string)
+	fmt.Printf("[WORKFLOW] CreateTask employeeID=%s question=%s\n", employeeID, body.Question)
 
 	taskID, err := h.svc.CreateTask(r.Context(), employeeID, body.Question)
 	if err != nil {
+		fmt.Printf("[WORKFLOW] CreateTask erro no service: %v\n", err)
 		writeJSON(w, http.StatusBadRequest, map[string]string{"error": err.Error()})
 		return
 	}
+	fmt.Printf("[WORKFLOW] CreateTask sucesso taskID=%s\n", taskID)
 
 	writeJSON(w, http.StatusOK, CreateTaskResponse{
 		TaskID:  taskID,
@@ -141,13 +141,16 @@ func (h *WorkflowHandler) CreateTask(w http.ResponseWriter, r *http.Request) {
 // GET /api/tasks/{id}
 func (h *WorkflowHandler) GetTask(w http.ResponseWriter, r *http.Request) {
 	taskID := r.PathValue("id")
+	fmt.Printf("[WORKFLOW] GetTask taskID=%s\n", taskID)
 	if taskID == "" {
+		fmt.Println("[WORKFLOW] GetTask taskID vazio")
 		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "task id is required"})
 		return
 	}
 
 	task, err := h.svc.GetTask(r.Context(), taskID)
 	if err != nil {
+		fmt.Printf("[WORKFLOW] GetTask erro: %v\n", err)
 		if err == service.ErrTaskNotFound {
 			writeJSON(w, http.StatusNotFound, map[string]string{"error": "task not found"})
 			return
@@ -155,6 +158,7 @@ func (h *WorkflowHandler) GetTask(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": err.Error()})
 		return
 	}
+	fmt.Printf("[WORKFLOW] GetTask sucesso taskID=%s status=%s\n", taskID, task.Task.Status)
 
 	resp := buildTaskResponse(task)
 	writeJSON(w, http.StatusOK, resp)
@@ -163,12 +167,15 @@ func (h *WorkflowHandler) GetTask(w http.ResponseWriter, r *http.Request) {
 // GET /api/tasks
 func (h *WorkflowHandler) ListTasks(w http.ResponseWriter, r *http.Request) {
 	employeeID := r.Context().Value("employee_id").(string)
+	fmt.Printf("[WORKFLOW] ListTasks employeeID=%s\n", employeeID)
 
 	tasks, err := h.repo.GetTasksByEmployee(r.Context(), employeeID)
 	if err != nil {
+		fmt.Printf("[WORKFLOW] ListTasks erro: %v\n", err)
 		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": err.Error()})
 		return
 	}
+	fmt.Printf("[WORKFLOW] ListTasks sucesso: %d tarefas encontradas\n", len(tasks))
 
 	resp := make([]TaskResponse, 0, len(tasks))
 	for _, t := range tasks {
@@ -191,16 +198,20 @@ func (h *WorkflowHandler) ListTasks(w http.ResponseWriter, r *http.Request) {
 // POST /api/tasks/{id}/process
 func (h *WorkflowHandler) ProcessTask(w http.ResponseWriter, r *http.Request) {
 	taskID := r.PathValue("id")
+	fmt.Printf("[WORKFLOW] ProcessTask taskID=%s\n", taskID)
 	if taskID == "" {
+		fmt.Println("[WORKFLOW] ProcessTask taskID vazio")
 		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "task id is required"})
 		return
 	}
 
 	result, err := h.svc.StartProcessing(r.Context(), taskID)
 	if err != nil {
+		fmt.Printf("[WORKFLOW] ProcessTask erro: %v\n", err)
 		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": err.Error()})
 		return
 	}
+	fmt.Printf("[WORKFLOW] ProcessTask sucesso taskID=%s answered=%v blocked=%v\n", taskID, result.Answered, result.Blocked)
 
 	resp := map[string]any{
 		"taskId":         taskID,
@@ -239,25 +250,31 @@ func (h *WorkflowHandler) ProcessTask(w http.ResponseWriter, r *http.Request) {
 // POST /api/tasks/{id}/message
 func (h *WorkflowHandler) ProcessMessage(w http.ResponseWriter, r *http.Request) {
 	taskID := r.PathValue("id")
+	fmt.Printf("[WORKFLOW] ProcessMessage taskID=%s\n", taskID)
 	if taskID == "" {
+		fmt.Println("[WORKFLOW] ProcessMessage taskID vazio")
 		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "task id is required"})
 		return
 	}
 
 	var body ProcessMessageRequest
 	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		fmt.Printf("[WORKFLOW] ProcessMessage erro decode JSON: %v\n", err)
 		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid JSON body"})
 		return
 	}
 
 	body.Message = strings.TrimSpace(body.Message)
 	if body.Message == "" {
+		fmt.Println("[WORKFLOW] ProcessMessage message vazia")
 		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "message is required"})
 		return
 	}
+	fmt.Printf("[WORKFLOW] ProcessMessage taskID=%s message=%s\n", taskID, body.Message)
 
 	result, err := h.svc.ProcessMessage(r.Context(), taskID, body.Message)
 	if err != nil {
+		fmt.Printf("[WORKFLOW] ProcessMessage erro: %v\n", err)
 		status := http.StatusInternalServerError
 		if err == service.ErrTaskNotFound {
 			status = http.StatusNotFound
@@ -267,6 +284,7 @@ func (h *WorkflowHandler) ProcessMessage(w http.ResponseWriter, r *http.Request)
 		writeJSON(w, status, map[string]string{"error": err.Error()})
 		return
 	}
+	fmt.Printf("[WORKFLOW] ProcessMessage sucesso readyToGenerate=%v\n", result.ReadyToGenerate)
 
 	// Get updated missing fields
 	missing, _ := h.svc.GetMissingFields(r.Context(), taskID)
@@ -282,18 +300,23 @@ func (h *WorkflowHandler) ProcessMessage(w http.ResponseWriter, r *http.Request)
 // POST /api/tasks/{id}/data
 func (h *WorkflowHandler) SetData(w http.ResponseWriter, r *http.Request) {
 	taskID := r.PathValue("id")
+	fmt.Printf("[WORKFLOW] SetData taskID=%s\n", taskID)
 	if taskID == "" {
+		fmt.Println("[WORKFLOW] SetData taskID vazio")
 		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "task id is required"})
 		return
 	}
 
 	var body SetDataRequest
 	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		fmt.Printf("[WORKFLOW] SetData erro decode JSON: %v\n", err)
 		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid JSON body"})
 		return
 	}
+	fmt.Printf("[WORKFLOW] SetData taskID=%s field=%s value=%s\n", taskID, body.FieldName, body.Value)
 
 	if err := h.svc.SetData(r.Context(), taskID, body.FieldName, body.Value); err != nil {
+		fmt.Printf("[WORKFLOW] SetData erro: %v\n", err)
 		status := http.StatusInternalServerError
 		if err == service.ErrTaskNotFound {
 			status = http.StatusNotFound
@@ -301,6 +324,7 @@ func (h *WorkflowHandler) SetData(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, status, map[string]string{"error": err.Error()})
 		return
 	}
+	fmt.Println("[WORKFLOW] SetData sucesso")
 
 	writeJSON(w, http.StatusOK, map[string]string{"status": "ok"})
 }
@@ -308,16 +332,20 @@ func (h *WorkflowHandler) SetData(w http.ResponseWriter, r *http.Request) {
 // POST /api/tasks/{id}/validate
 func (h *WorkflowHandler) ValidateTask(w http.ResponseWriter, r *http.Request) {
 	taskID := r.PathValue("id")
+	fmt.Printf("[WORKFLOW] ValidateTask taskID=%s\n", taskID)
 	if taskID == "" {
+		fmt.Println("[WORKFLOW] ValidateTask taskID vazio")
 		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "task id is required"})
 		return
 	}
 
 	result, err := h.svc.ValidateAndProceed(r.Context(), taskID)
 	if err != nil {
+		fmt.Printf("[WORKFLOW] ValidateTask erro: %v\n", err)
 		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": err.Error()})
 		return
 	}
+	fmt.Printf("[WORKFLOW] ValidateTask sucesso readyToGenerate=%v\n", result.ReadyToGenerate)
 
 	writeJSON(w, http.StatusOK, ProcessMessageResponse{
 		Answer:       result.Answer,
@@ -329,13 +357,16 @@ func (h *WorkflowHandler) ValidateTask(w http.ResponseWriter, r *http.Request) {
 // POST /api/tasks/{id}/generate
 func (h *WorkflowHandler) GenerateDocument(w http.ResponseWriter, r *http.Request) {
 	taskID := r.PathValue("id")
+	fmt.Printf("[WORKFLOW] GenerateDocument taskID=%s\n", taskID)
 	if taskID == "" {
+		fmt.Println("[WORKFLOW] GenerateDocument taskID vazio")
 		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "task id is required"})
 		return
 	}
 
 	run, err := h.svc.GenerateDocument(r.Context(), taskID)
 	if err != nil {
+		fmt.Printf("[WORKFLOW] GenerateDocument erro: %v\n", err)
 		status := http.StatusInternalServerError
 		if err == service.ErrTaskNotFound || err == service.ErrTemplateNotFound {
 			status = http.StatusNotFound
@@ -345,33 +376,38 @@ func (h *WorkflowHandler) GenerateDocument(w http.ResponseWriter, r *http.Reques
 		writeJSON(w, status, map[string]string{"error": err.Error()})
 		return
 	}
+	fmt.Printf("[WORKFLOW] GenerateDocument sucesso runID=%s status=%s docx=%s\n", run.ID, run.Status, run.DocxPath)
 
 	var docxURL string
 	if run.DocxPath != "" {
-		docxURL = "/api/documents/" + filepath.Base(run.DocxPath)
+		docxURL = "/api/documents/" + run.ID + "/docx"
 	}
 
-	writeJSON(w, http.StatusOK, GenerateDocumentResponse{
-		DocumentRunID: run.ID,
-		Status:        string(run.Status),
-		DocxPath:      docxURL,
-		PdfPath:       "",
+	writeJSON(w, http.StatusOK, map[string]any{
+		"documentRunId": run.ID,
+		"status":        string(run.Status),
+		"docxPath":      docxURL,
+		"pdfPath":       "",
 	})
 }
 
 // GET /api/tasks/{id}/sources
 func (h *WorkflowHandler) GetTaskSources(w http.ResponseWriter, r *http.Request) {
 	taskID := r.PathValue("id")
+	fmt.Printf("[WORKFLOW] GetTaskSources taskID=%s\n", taskID)
 	if taskID == "" {
+		fmt.Println("[WORKFLOW] GetTaskSources taskID vazio")
 		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "task id is required"})
 		return
 	}
 
 	hits, err := h.svc.GetTaskSources(r.Context(), taskID)
 	if err != nil {
+		fmt.Printf("[WORKFLOW] GetTaskSources erro: %v\n", err)
 		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": err.Error()})
 		return
 	}
+	fmt.Printf("[WORKFLOW] GetTaskSources sucesso: %d fontes encontradas\n", len(hits))
 
 	sources := make([]map[string]any, 0, len(hits))
 	for _, hit := range hits {
@@ -390,12 +426,15 @@ func (h *WorkflowHandler) GetTaskSources(w http.ResponseWriter, r *http.Request)
 // GET /api/documents
 func (h *WorkflowHandler) ListDocuments(w http.ResponseWriter, r *http.Request) {
 	employeeID := r.Context().Value("employee_id").(string)
+	fmt.Printf("[WORKFLOW] ListDocuments employeeID=%s\n", employeeID)
 
 	runs, err := h.svc.GetDocumentsByEmployee(r.Context(), employeeID)
 	if err != nil {
+		fmt.Printf("[WORKFLOW] ListDocuments erro: %v\n", err)
 		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": err.Error()})
 		return
 	}
+	fmt.Printf("[WORKFLOW] ListDocuments sucesso: %d documentos encontrados\n", len(runs))
 
 	resp := make([]DocumentRunResponse, 0, len(runs))
 	for _, run := range runs {
@@ -416,16 +455,20 @@ func (h *WorkflowHandler) ListDocuments(w http.ResponseWriter, r *http.Request) 
 // GET /api/documents/{id}/sources
 func (h *WorkflowHandler) GetDocumentSources(w http.ResponseWriter, r *http.Request) {
 	runID := r.PathValue("id")
+	fmt.Printf("[WORKFLOW] GetDocumentSources runID=%s\n", runID)
 	if runID == "" {
+		fmt.Println("[WORKFLOW] GetDocumentSources runID vazio")
 		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "document id is required"})
 		return
 	}
 
 	sources, err := h.svc.GetDocumentSources(r.Context(), runID)
 	if err != nil {
+		fmt.Printf("[WORKFLOW] GetDocumentSources erro: %v\n", err)
 		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": err.Error()})
 		return
 	}
+	fmt.Printf("[WORKFLOW] GetDocumentSources sucesso: %d fontes encontradas\n", len(sources))
 
 	resp := make([]map[string]any, 0, len(sources))
 	for _, ds := range sources {
@@ -439,7 +482,68 @@ func (h *WorkflowHandler) GetDocumentSources(w http.ResponseWriter, r *http.Requ
 	writeJSON(w, http.StatusOK, map[string]any{"sources": resp})
 }
 
-// Helper functions
+// GET /api/documents/{id}/docx
+func (h *WorkflowHandler) DownloadDocx(w http.ResponseWriter, r *http.Request) {
+	runID := r.PathValue("id")
+	fmt.Printf("[WORKFLOW] DownloadDocx runID=%s\n", runID)
+	if runID == "" {
+		fmt.Println("[WORKFLOW] DownloadDocx runID vazio")
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "document id is required"})
+		return
+	}
+
+	path, err := h.svc.GetDocumentRunPath(r.Context(), runID)
+	if err != nil {
+		fmt.Printf("[WORKFLOW] DownloadDocx erro: %v\n", err)
+		writeJSON(w, http.StatusNotFound, map[string]string{"error": "document not found"})
+		return
+	}
+
+	data, err := os.ReadFile(path)
+	if err != nil {
+		fmt.Printf("[WORKFLOW] DownloadDocx erro read file: %v\n", err)
+		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "failed to read document"})
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/vnd.openxmlformats-officedocument.wordprocessingml.document")
+	w.Header().Set("Content-Disposition", fmt.Sprintf("attachment; filename=\"%s.docx\"", path))
+	w.WriteHeader(http.StatusOK)
+	_, _ = w.Write(data)
+	fmt.Printf("[WORKFLOW] DownloadDocx sucesso runID=%s size=%d\n", runID, len(data))
+}
+
+// GET /api/documents/{id}/pdf
+func (h *WorkflowHandler) DownloadPdf(w http.ResponseWriter, r *http.Request) {
+	runID := r.PathValue("id")
+	fmt.Printf("[WORKFLOW] DownloadPdf runID=%s\n", runID)
+	if runID == "" {
+		fmt.Println("[WORKFLOW] DownloadPdf runID vazio")
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "document id is required"})
+		return
+	}
+
+	path, err := h.svc.GetDocumentRunPath(r.Context(), runID)
+	if err != nil {
+		fmt.Printf("[WORKFLOW] DownloadPdf erro: %v\n", err)
+		writeJSON(w, http.StatusNotFound, map[string]string{"error": "document not found"})
+		return
+	}
+
+	pdfPath := strings.TrimSuffix(path, ".docx") + ".pdf"
+	data, err := os.ReadFile(pdfPath)
+	if err != nil {
+		fmt.Printf("[WORKFLOW] DownloadPdf erro read file: %v\n", err)
+		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "failed to read pdf"})
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/pdf")
+	w.Header().Set("Content-Disposition", fmt.Sprintf("attachment; filename=\"%s.pdf\"", pdfPath))
+	w.WriteHeader(http.StatusOK)
+	_, _ = w.Write(data)
+	fmt.Printf("[WORKFLOW] DownloadPdf sucesso runID=%s size=%d\n", runID, len(data))
+}
 
 func buildTaskResponse(task *service.TaskDetail) TaskResponse {
 	reqs := make([]RequirementResponse, 0, len(task.Requirements))
@@ -501,4 +605,20 @@ func buildTemplateResponse(tmpl models.DocumentTemplate, fields []models.Templat
 		Version:      tmpl.Version,
 		Fields:       fieldResponses,
 	}
+}
+
+// GET /api/history
+func (h *WorkflowHandler) ListHistory(w http.ResponseWriter, r *http.Request) {
+	employeeID := r.Context().Value("employee_id").(string)
+	fmt.Printf("[WORKFLOW] ListHistory employeeID=%s\n", employeeID)
+
+	items, err := h.svc.GetHistory(r.Context(), employeeID)
+	if err != nil {
+		fmt.Printf("[WORKFLOW] ListHistory erro: %v\n", err)
+		writeJSON(w, http.StatusOK, map[string]any{"history": []models.HistoryItem{}})
+		return
+	}
+	fmt.Printf("[WORKFLOW] ListHistory sucesso: %d items\n", len(items))
+
+	writeJSON(w, http.StatusOK, map[string]any{"history": items})
 }

@@ -127,10 +127,13 @@ func (c *Client) Chat(ctx context.Context, messages []Message) (string, error) {
 
 // ChatWithMaxTokens allows overriding the max tokens for a single call.
 func (c *Client) ChatWithMaxTokens(ctx context.Context, messages []Message, maxTokens int) (string, error) {
+	fmt.Printf("[GROQ] ChatWithMaxTokens iniciado model=%s maxTokens=%d messages=%d\n", c.model, maxTokens, len(messages))
 	if strings.TrimSpace(c.apiKey) == "" {
+		fmt.Println("[GROQ] ChatWithMaxTokens apiKey vazia")
 		return "", ErrEmptyAPIKey{}
 	}
 	if len(messages) == 0 {
+		fmt.Println("[GROQ] ChatWithMaxTokens messages vazia")
 		return "", fmt.Errorf("groq: messages is empty")
 	}
 
@@ -146,11 +149,14 @@ func (c *Client) ChatWithMaxTokens(ctx context.Context, messages []Message, maxT
 	}
 	body, err := json.Marshal(req)
 	if err != nil {
+		fmt.Printf("[GROQ] ChatWithMaxTokens erro marshal: %v\n", err)
 		return "", fmt.Errorf("marshal request: %w", err)
 	}
+	fmt.Printf("[GROQ] ChatWithMaxTokens request body length=%d\n", len(body))
 
 	httpReq, err := http.NewRequestWithContext(ctx, http.MethodPost, c.endpoint, bytes.NewReader(body))
 	if err != nil {
+		fmt.Printf("[GROQ] ChatWithMaxTokens erro new request: %v\n", err)
 		return "", fmt.Errorf("new request: %w", err)
 	}
 	httpReq.Header.Set("Content-Type", "application/json")
@@ -158,28 +164,36 @@ func (c *Client) ChatWithMaxTokens(ctx context.Context, messages []Message, maxT
 
 	resp, err := c.httpClient.Do(httpReq)
 	if err != nil {
+		fmt.Printf("[GROQ] ChatWithMaxTokens erro http call: %v\n", err)
 		return "", fmt.Errorf("groq http call: %w", err)
 	}
 	defer resp.Body.Close()
+	fmt.Printf("[GROQ] ChatWithMaxTokens response status=%d\n", resp.StatusCode)
 
 	respBody, err := io.ReadAll(resp.Body)
 	if err != nil {
+		fmt.Printf("[GROQ] ChatWithMaxTokens erro read body: %v\n", err)
 		return "", fmt.Errorf("read body: %w", err)
 	}
+	fmt.Printf("[GROQ] ChatWithMaxTokens response body length=%d\n", len(respBody))
 
 	if resp.StatusCode != http.StatusOK {
 		// Não expomos o body inteiro ao usuário — logamos e devolvemos msg curta.
 		slog.Warn("groq non-200", "status", resp.StatusCode, "body", string(respBody))
+		fmt.Printf("[GROQ] ChatWithMaxTokens status nao-200: %d body=%s\n", resp.StatusCode, string(respBody))
 		return "", fmt.Errorf("groq returned status %d", resp.StatusCode)
 	}
 
 	var parsed ChatResponse
 	if err := json.Unmarshal(respBody, &parsed); err != nil {
+		fmt.Printf("[GROQ] ChatWithMaxTokens erro unmarshal: %v\n", err)
 		return "", fmt.Errorf("unmarshal response: %w", err)
 	}
 	if len(parsed.Choices) == 0 {
+		fmt.Println("[GROQ] ChatWithMaxTokens nenhuma choice na resposta")
 		return "", fmt.Errorf("groq returned no choices")
 	}
+	fmt.Printf("[GROQ] ChatWithMaxTokens sucesso model=%s total_tokens=%d\n", parsed.Model, parsed.Usage.TotalTokens)
 
 	// Log de observabilidade (consumo de tokens) — útil para debugar custos.
 	slog.Info("groq chat",

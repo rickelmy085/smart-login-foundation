@@ -1,6 +1,7 @@
 package knowledge
 
 import (
+	"fmt" // debug prints
 	"strings"
 )
 
@@ -25,6 +26,18 @@ var ptStopwords = map[string]struct{}{
 	"voce": {}, "voces": {},
 }
 
+var acronymWhitelist = map[string]struct{}{
+	"ti":  {},
+	"tic": {},
+	"bi":  {},
+	"api": {},
+	"sla": {},
+	"erp": {},
+	"cade": {},
+	"rh":  {},
+	"ouvidoria": {},
+}
+
 // normalizeRemoveAccents normaliza uma palavra removendo acentos
 // para casar com o comportamento do tokenizer unicode61.
 func normalizeRemoveAccents(w string) string {
@@ -40,20 +53,28 @@ func normalizeRemoveAccents(w string) string {
 
 // significantTerms extrai termos significativos de uma consulta:
 // remove stopwords, palavras curtas (<4 chars) e normaliza acentos.
+// Siglas/termos curtos essenciais são preservados via allowlist.
 func significantTerms(q string) []string {
+	fmt.Printf("[KNOWLEDGE] significantTerms query=%s\n", q)
 	words := strings.Fields(strings.ToLower(q))
 	var out []string
 	for _, w := range words {
 		normalized := normalizeRemoveAccents(w)
 		normalized = strings.Trim(normalized, ".,;:!?\"'()[]{}")
-		if len(normalized) < 4 {
+		if len(normalized) == 0 {
 			continue
+		}
+		if len(normalized) < 4 {
+			if _, ok := acronymWhitelist[normalized]; !ok {
+				continue
+			}
 		}
 		if _, skip := ptStopwords[normalized]; skip {
 			continue
 		}
 		out = append(out, normalized)
 	}
+	fmt.Printf("[KNOWLEDGE] significantTerms resultado: %v\n", out)
 	return out
 }
 
@@ -62,7 +83,10 @@ func significantTerms(q string) []string {
 func significantTermsString(q string) string {
 	terms := significantTerms(q)
 	if len(terms) == 0 {
+		fmt.Println("[KNOWLEDGE] significantTermsString nenhum termo significativo")
 		return ""
 	}
-	return strings.Join(terms, " OR ")
+	result := strings.Join(terms, " OR ")
+	fmt.Printf("[KNOWLEDGE] significantTermsString resultado: %s\n", result)
+	return result
 }

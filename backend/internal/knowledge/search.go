@@ -19,8 +19,10 @@ func NewSearcher(db *sql.DB) *Searcher {
 
 // SearchOptions permite customizar a busca.
 type SearchOptions struct {
-	Limit int    // número máximo de hits (default 10)
-	DocID string // restringe a busca a um documento (opcional)
+	Limit    int    // número máximo de hits (default 10)
+	DocID    string // restringe a busca a um documento (opcional)
+	MinScore float64 // limiar mínimo de relevância BM25 (menor = melhor; default 15.0)
+	MaxChunksPerDoc int // máximo de chunks por documento para diversidade (default 3)
 }
 
 // SanitizeFTS5 limpa a query do usuário para uso seguro no FTS5.
@@ -55,19 +57,30 @@ func SanitizeFTS5(q string) string {
 // A query é sanitizada; termos muito comuns (stopwords do unicode61)
 // são ignorados automaticamente pelo tokenizer.
 func (s *Searcher) Search(ctx context.Context, query string, opt SearchOptions) ([]SearchHit, error) {
+	fmt.Printf("[KNOWLEDGE] Search query=%s limit=%d docID=%s\n", query, opt.Limit, opt.DocID)
 	if opt.Limit <= 0 {
 		opt.Limit = 10
 	}
+	if opt.MinScore <= 0 {
+		opt.MinScore = 15.0
+	}
+	if opt.MaxChunksPerDoc <= 0 {
+		opt.MaxChunksPerDoc = 3
+	}
+
 	q := SanitizeFTS5(query)
 	if q == "" {
+		fmt.Println("[KNOWLEDGE] Search query vazia apos sanitize")
 		return nil, nil
 	}
 
 	significant := significantTermsString(q)
 	if significant == "" {
+		fmt.Println("[KNOWLEDGE] Search nenhum termo significativo")
 		return nil, nil
 	}
 	escaped := strings.ReplaceAll(significant, "'", "''")
+	fmt.Printf("[KNOWLEDGE] Search significant=%s escaped=%s\n", significant, escaped)
 
 	// Junta chunks (texto) + documents (metadados) + score bm25().
 	sqlStmt := `
@@ -91,6 +104,7 @@ func (s *Searcher) Search(ctx context.Context, query string, opt SearchOptions) 
 
 	rows, err := s.db.QueryContext(ctx, sqlStmt, args...)
 	if err != nil {
+		fmt.Printf("[KNOWLEDGE] Search erro query: %v\n", err)
 		return nil, fmt.Errorf("fts5 query: %w", err)
 	}
 	defer rows.Close()
@@ -106,13 +120,43 @@ func (s *Searcher) Search(ctx context.Context, query string, opt SearchOptions) 
 			&h.Document.CharCount, &h.Document.Hash,
 			&rank, &h.Snippet,
 		); err != nil {
+			fmt.Printf("[KNOWLEDGE] Search erro scan: %v\n", err)
 			return nil, err
 		}
 		h.Score = rank
 		h.Document.ID = h.Chunk.DocumentID
 		hits = append(hits, h)
 	}
-	return hits, rows.Err()
+	fmt.Printf("[KNOWLEDGE] Search sucesso: %d hits\n", len(hits))
+
+	// Filtra por limiar de relevância BM25.
+	filtered := make([]SearchHit, 0, len(hits))
+	for _, h := range hits {
+		if h.Score <= opt.MinScore {
+			filtered = append(filtered, h)
+		} else {
+			fmt.Printf("[KNOWLEDGE] Search hit descartado por score chunk=%d doc=%s score=%.4f\n",
+				h.Chunk.ID, h.Document.ID, h.Score)
+		}
+	}
+	fmt.Printf("[KNOWLEDGE] Search apos filtro de relevancia: %d hits\n", len(filtered))
+
+	// Deduplicação/diversidade: limita chunks por mesmo documento.
+	perDoc := make(map[string]int)
+	diverse := make([]SearchHit, 0, len(filtered))
+	for _, h := range filtered {
+		n := perDoc[h.Document.ID]
+		if n >= opt.MaxChunksPerDoc {
+			fmt.Printf("[KNOWLEDGE] Search hit descartado por diversidade doc=%s chunk=%d\n",
+				h.Document.ID, h.Chunk.ID)
+			continue
+		}
+		perDoc[h.Document.ID] = n + 1
+		diverse = append(diverse, h)
+	}
+	fmt.Printf("[KNOWLEDGE] Search apos diversidade: %d hits\n", len(diverse))
+
+	return diverse, rows.Err()
 }
 
 // Stats devolve totais (útil pra CLI e pra mostrar no dashboard).

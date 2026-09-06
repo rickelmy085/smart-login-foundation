@@ -3,12 +3,14 @@ package database
 import (
 	"context"
 	"database/sql"
+	"fmt" // debug prints
 	"log/slog"
 )
 
 // MigrateWorkflow cria as tabelas do sistema de workflow e geração documental.
 // Idempotente: CREATE TABLE IF NOT EXISTS.
 func MigrateWorkflow(ctx context.Context, db *sql.DB) error {
+	fmt.Println("[DB] MigrateWorkflow iniciada")
 	stmts := []string{
 		`CREATE TABLE IF NOT EXISTS document_templates (
 			id TEXT PRIMARY KEY,
@@ -99,14 +101,68 @@ func MigrateWorkflow(ctx context.Context, db *sql.DB) error {
 		`CREATE INDEX IF NOT EXISTS idx_document_runs_task ON document_runs(task_id);`,
 		`CREATE INDEX IF NOT EXISTS idx_document_sources_run ON document_sources(document_run_id);`,
 		`CREATE INDEX IF NOT EXISTS idx_template_fields_template ON template_fields(template_id);`,
-	}
 
-	for _, stmt := range stmts {
+		`DROP VIEW IF EXISTS history_view;`,
+		`CREATE VIEW history_view AS
+		SELECT
+			cm.id AS id,
+			'chat' AS type,
+			SUBSTR(cm.content, 1, 80) || CASE WHEN LENGTH(cm.content) > 80 THEN '…' ELSE '' END AS title,
+			cm.content AS preview,
+			'completed' AS status,
+			cm.created_at AS created_at,
+			cm.employee_id AS employee_id,
+			cm.sources_count AS sources
+		FROM chat_messages cm
+		WHERE cm.role = 'user'
+		UNION ALL
+		SELECT
+			wt.id AS id,
+			'task' AS type,
+			wt.original_request AS title,
+			COALESCE(wt.procedure, wt.original_request) AS preview,
+			wt.status AS status,
+			wt.created_at AS created_at,
+			wt.employee_id AS employee_id,
+			(SELECT COUNT(*) FROM document_sources ds JOIN document_runs dr ON ds.document_run_id = dr.id WHERE dr.task_id = wt.id) AS sources
+		FROM workflow_tasks wt
+		UNION ALL
+		SELECT
+			dr.id AS id,
+			'document' AS type,
+			dt.name AS title,
+			wt.original_request AS preview,
+			dr.status AS status,
+			dr.created_at AS created_at,
+			dr.employee_id AS employee_id,
+			(SELECT COUNT(*) FROM document_sources ds WHERE ds.document_run_id = dr.id) AS sources
+		FROM document_runs dr
+		JOIN workflow_tasks wt ON wt.id = dr.task_id
+		JOIN document_templates dt ON dt.id = dr.template_id;`,
+	}
+	stmts = append(stmts, []string{
+		`CREATE TABLE IF NOT EXISTS chat_messages (
+			id TEXT PRIMARY KEY,
+			employee_id TEXT NOT NULL,
+			role TEXT NOT NULL,
+			content TEXT NOT NULL,
+			allow_web_search INTEGER NOT NULL DEFAULT 0,
+			sources_count INTEGER NOT NULL DEFAULT 0,
+			created_at TEXT NOT NULL DEFAULT (datetime('now'))
+		);`,
+		`CREATE INDEX IF NOT EXISTS idx_chat_messages_employee ON chat_messages(employee_id);`,
+		`CREATE INDEX IF NOT EXISTS idx_chat_messages_created ON chat_messages(created_at);`,
+	}...)
+
+	for i, stmt := range stmts {
+		fmt.Printf("[DB] MigrateWorkflow executando stmt %d/%d\n", i+1, len(stmts))
 		if _, err := db.ExecContext(ctx, stmt); err != nil {
+			fmt.Printf("[DB] MigrateWorkflow erro stmt %d: %v\n", i+1, err)
 			return err
 		}
 	}
 
 	slog.Info("workflow schema ready")
+	fmt.Println("[DB] MigrateWorkflow schema pronto")
 	return nil
 }

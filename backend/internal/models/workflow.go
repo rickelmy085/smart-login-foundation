@@ -178,3 +178,14 @@ type RuleEvaluation struct {
 	Description string `json:"description"`
 	Source      string `json:"source"`
 }
+
+// HistoryItem represents a unified history entry for the frontend history page.
+type HistoryItem struct {
+	ID        string `json:"id" db:"id"`
+	Type      string `json:"type" db:"type"`
+	Title     string `json:"title" db:"title"`
+	Preview   string `json:"preview" db:"preview"`
+	Status    string `json:"status" db:"status"`
+	CreatedAt string `json:"createdAt" db:"created_at"`
+	Sources   int    `json:"sources" db:"sources"`
+}

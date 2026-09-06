@@ -8,6 +8,7 @@ package database
 import (
 	"context"
 	"database/sql"
+	"fmt" // debug prints
 	"log/slog"
 )
 
@@ -26,6 +27,7 @@ import (
 // na tabela regular ajuda a devolver o trecho exato ao usuário,
 // enquanto o FTS é só pra rankeamento.
 func MigrateKnowledge(ctx context.Context, db *sql.DB) error {
+	fmt.Println("[DB] MigrateKnowledge iniciada")
 	if _, err := db.ExecContext(ctx, `
 		CREATE TABLE IF NOT EXISTS documents (
 			id TEXT PRIMARY KEY,
@@ -39,8 +41,10 @@ func MigrateKnowledge(ctx context.Context, db *sql.DB) error {
 			ingested_at TEXT NOT NULL DEFAULT (datetime('now'))
 		);
 	`); err != nil {
+		fmt.Printf("[DB] MigrateKnowledge erro create documents: %v\n", err)
 		return err
 	}
+	fmt.Println("[DB] MigrateKnowledge tabela documents criada/ok")
 
 	if _, err := db.ExecContext(ctx, `
 		CREATE TABLE IF NOT EXISTS chunks (
@@ -53,12 +57,16 @@ func MigrateKnowledge(ctx context.Context, db *sql.DB) error {
 			UNIQUE(document_id, ord)
 		);
 	`); err != nil {
+		fmt.Printf("[DB] MigrateKnowledge erro create chunks: %v\n", err)
 		return err
 	}
+	fmt.Println("[DB] MigrateKnowledge tabela chunks criada/ok")
 
 	if _, err := db.ExecContext(ctx, `CREATE INDEX IF NOT EXISTS idx_chunks_document_id ON chunks(document_id);`); err != nil {
+		fmt.Printf("[DB] MigrateKnowledge erro create index: %v\n", err)
 		return err
 	}
+	fmt.Println("[DB] MigrateKnowledge indice idx_chunks_document_id criado/ok")
 
 	// FTS5: "external content" usa chunks.content como source-of-truth,
 	// evitando duplicar texto. tokenize='unicode61 remove_diacritics 2'
@@ -71,12 +79,14 @@ func MigrateKnowledge(ctx context.Context, db *sql.DB) error {
 			tokenize='unicode61 remove_diacritics 2'
 		);
 	`); err != nil {
+		fmt.Printf("[DB] MigrateKnowledge erro create chunks_fts: %v\n", err)
 		return err
 	}
+	fmt.Println("[DB] MigrateKnowledge tabela chunks_fts criada/ok")
 
 	// Triggers mantêm chunks_fts em sincronia com chunks.
 	// Sem eles, o FTS ficaria congelado após o INSERT inicial.
-	for _, stmt := range []string{
+	for i, stmt := range []string{
 		`CREATE TRIGGER IF NOT EXISTS chunks_ai AFTER INSERT ON chunks BEGIN
 			INSERT INTO chunks_fts(rowid, content) VALUES (new.id, new.content);
 		END;`,
@@ -88,11 +98,15 @@ func MigrateKnowledge(ctx context.Context, db *sql.DB) error {
 			INSERT INTO chunks_fts(rowid, content) VALUES (new.id, new.content);
 		END;`,
 	} {
+		fmt.Printf("[DB] MigrateKnowledge criando trigger %d/3\n", i+1)
 		if _, err := db.ExecContext(ctx, stmt); err != nil {
+			fmt.Printf("[DB] MigrateKnowledge erro trigger %d: %v\n", i+1, err)
 			return err
 		}
 	}
+	fmt.Println("[DB] MigrateKnowledge triggers criados/ok")
 
 	slog.Info("knowledge schema ready")
+	fmt.Println("[DB] MigrateKnowledge schema pronto")
 	return nil
 }

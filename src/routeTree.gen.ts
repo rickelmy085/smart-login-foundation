@@ -15,6 +15,8 @@ import { Route as AppIndexRouteImport } from './routes/app.index'
 import { Route as AppCopilotRouteImport } from './routes/app.copilot'
 import { Route as AppHistoricoRouteImport } from './routes/app.historico'
 import { Route as AppPerfilRouteImport } from './routes/app.perfil'
+import { Route as AppTarefasRouteImport } from './routes/app.tarefas'
+import { Route as AppTarefasIdRouteImport } from './routes/app.tarefas.$id'
 
 const IndexRoute = IndexRouteImport.update({
   id: '/',
@@ -46,6 +48,16 @@ const AppPerfilRoute = AppPerfilRouteImport.update({
   path: '/perfil',
   getParentRoute: () => AppRoute,
 } as any)
+const AppTarefasRoute = AppTarefasRouteImport.update({
+  id: '/tarefas',
+  path: '/tarefas',
+  getParentRoute: () => AppRoute,
+} as any)
+const AppTarefasIdRoute = AppTarefasIdRouteImport.update({
+  id: '/$id',
+  path: '/$id',
+  getParentRoute: () => AppTarefasRoute,
+} as any)
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
@@ -53,14 +65,18 @@ export interface FileRoutesByFullPath {
   '/app/copilot': typeof AppCopilotRoute
   '/app/historico': typeof AppHistoricoRoute
   '/app/perfil': typeof AppPerfilRoute
+  '/app/tarefas': typeof AppTarefasRouteWithChildren
   '/app/': typeof AppIndexRoute
+  '/app/tarefas/$id': typeof AppTarefasIdRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
   '/app/copilot': typeof AppCopilotRoute
   '/app/historico': typeof AppHistoricoRoute
   '/app/perfil': typeof AppPerfilRoute
+  '/app/tarefas': typeof AppTarefasRouteWithChildren
   '/app': typeof AppIndexRoute
+  '/app/tarefas/$id': typeof AppTarefasIdRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
@@ -69,14 +85,30 @@ export interface FileRoutesById {
   '/app/copilot': typeof AppCopilotRoute
   '/app/historico': typeof AppHistoricoRoute
   '/app/perfil': typeof AppPerfilRoute
+  '/app/tarefas': typeof AppTarefasRouteWithChildren
   '/app/': typeof AppIndexRoute
+  '/app/tarefas/$id': typeof AppTarefasIdRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
   fullPaths:
-    '/' | '/app' | '/app/copilot' | '/app/historico' | '/app/perfil' | '/app/'
+    | '/'
+    | '/app'
+    | '/app/copilot'
+    | '/app/historico'
+    | '/app/perfil'
+    | '/app/tarefas'
+    | '/app/'
+    | '/app/tarefas/$id'
   fileRoutesByTo: FileRoutesByTo
-  to: '/' | '/app/copilot' | '/app/historico' | '/app/perfil' | '/app'
+  to:
+    | '/'
+    | '/app/copilot'
+    | '/app/historico'
+    | '/app/perfil'
+    | '/app/tarefas'
+    | '/app'
+    | '/app/tarefas/$id'
   id:
     | '__root__'
     | '/'
@@ -84,7 +116,9 @@ export interface FileRouteTypes {
     | '/app/copilot'
     | '/app/historico'
     | '/app/perfil'
+    | '/app/tarefas'
     | '/app/'
+    | '/app/tarefas/$id'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
@@ -136,13 +170,40 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AppPerfilRouteImport
       parentRoute: typeof AppRoute
     }
+    '/app/tarefas': {
+      id: '/app/tarefas'
+      path: '/tarefas'
+      fullPath: '/app/tarefas'
+      preLoaderRoute: typeof AppTarefasRouteImport
+      parentRoute: typeof AppRoute
+    }
+    '/app/tarefas/$id': {
+      id: '/app/tarefas/$id'
+      path: '/$id'
+      fullPath: '/app/tarefas/$id'
+      preLoaderRoute: typeof AppTarefasIdRouteImport
+      parentRoute: typeof AppTarefasRoute
+    }
   }
 }
+
+interface AppTarefasRouteChildren {
+  AppTarefasIdRoute: typeof AppTarefasIdRoute
+}
+
+const AppTarefasRouteChildren: AppTarefasRouteChildren = {
+  AppTarefasIdRoute: AppTarefasIdRoute,
+}
+
+const AppTarefasRouteWithChildren = AppTarefasRoute._addFileChildren(
+  AppTarefasRouteChildren,
+)
 
 interface AppRouteChildren {
   AppCopilotRoute: typeof AppCopilotRoute
   AppHistoricoRoute: typeof AppHistoricoRoute
   AppPerfilRoute: typeof AppPerfilRoute
+  AppTarefasRoute: typeof AppTarefasRouteWithChildren
   AppIndexRoute: typeof AppIndexRoute
 }
 
@@ -150,6 +211,7 @@ const AppRouteChildren: AppRouteChildren = {
   AppCopilotRoute: AppCopilotRoute,
   AppHistoricoRoute: AppHistoricoRoute,
   AppPerfilRoute: AppPerfilRoute,
+  AppTarefasRoute: AppTarefasRouteWithChildren,
   AppIndexRoute: AppIndexRoute,
 }
 

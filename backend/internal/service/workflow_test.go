@@ -2,16 +2,16 @@ package service
 
 import (
 	"context"
-	"database/sql"
 	"testing"
 
 	"github.com/DATA-DOG/go-sqlmock"
-	"github.com/bsmart/abis/internal/knowledge"
 	"github.com/bsmart/abis/internal/groq"
+	"github.com/bsmart/abis/internal/knowledge"
+	"github.com/bsmart/abis/internal/repository"
 )
 
 func TestClassifyIntent_KnowledgeQuery(t *testing.T) {
-	db, mock, err := sqlmock.New()
+	db, _, err := sqlmock.New()
 	if err != nil {
 		t.Fatalf("failed to create mock db: %v", err)
 	}
@@ -47,9 +47,8 @@ func TestEvaluateRules_NoValue(t *testing.T) {
 	}
 	rules := svc.evaluateRules(data, "aquisição de TI")
 
-	// Should have at least one rule about the value being informed
-	if len(rules) == 0 {
-		t.Error("expected at least one rule evaluation")
+	if len(rules) != 0 {
+		t.Errorf("expected 0 rules without valor, got %d", len(rules))
 	}
 }
 

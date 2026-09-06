@@ -18,11 +18,17 @@ export type ChatMessage = {
   content: string;
   sources?: Source[];
   error?: string;
+  documentRunId?: string;
+  documentDocxUrl?: string;
+  documentPdfUrl?: string;
 };
 
 export type ChatResponse = {
   answer: string;
   sources: Source[];
+  documentRunId?: string;
+  documentDocxUrl?: string;
+  documentPdfUrl?: string;
 };
 
 // ---------- Workflow API ----------
@@ -123,12 +129,32 @@ export async function generateDocument(taskId: string): Promise<{
 
 // ---------- API ----------
 
-export async function sendQuestion(question: string): Promise<ChatResponse> {
+export async function sendQuestion(question: string, allowWebSearch = false): Promise<ChatResponse> {
   const res = await apiFetch("/api/chat", {
+    method: "POST",
+    body: JSON.stringify({ question, allowWebSearch }),
+  });
+
+  const data = (await res.json()) as ChatResponse;
+  return data;
+}
+
+export async function generateDocumentFromChat(question: string): Promise<{
+  documentRunId: string;
+  docxUrl: string;
+  pdfUrl: string;
+  message: string;
+}> {
+  const res = await apiFetch("/api/chat/generate-document", {
     method: "POST",
     body: JSON.stringify({ question }),
   });
 
-  const data = (await res.json()) as ChatResponse;
+  const data = (await res.json()) as {
+    documentRunId: string;
+    docxUrl: string;
+    pdfUrl: string;
+    message: string;
+  };
   return data;
 }

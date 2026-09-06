@@ -3,12 +3,14 @@ package database
 import (
 	"context"
 	"database/sql"
+	"fmt" // debug prints
 	"log/slog"
 )
 
 // SeedWorkflowTemplates inserts initial document templates based on
 // normative documents found in the system. This is idempotent.
 func SeedWorkflowTemplates(ctx context.Context, db *sql.DB) error {
+	fmt.Println("[DB] SeedWorkflowTemplates iniciada")
 	templates := []struct {
 		id, name, description, docType, version, templatePath string
 	}{
@@ -23,20 +25,24 @@ func SeedWorkflowTemplates(ctx context.Context, db *sql.DB) error {
 	}
 
 	for _, tpl := range templates {
+		fmt.Printf("[DB] SeedWorkflowTemplates processando template id=%s name=%s\n", tpl.id, tpl.name)
 		var existing string
 		err := db.QueryRowContext(ctx, `SELECT id FROM document_templates WHERE id = ?`, tpl.id).Scan(&existing)
 		if err == nil {
+			fmt.Printf("[DB] SeedWorkflowTemplates template %s ja existe, pulando\n", tpl.id)
 			continue // já existe
 		}
 
 		_, err = db.ExecContext(ctx, `
 			INSERT INTO document_templates (id, name, description, document_type, version, active, template_path)
-			VALUES (?, ?, ?, ?, ?, 1, ?)
-		`, tpl.id, tpl.name, tpl.description, tpl.docType, tpl.version, tpl.templatePath)
+			VALUES (?, ?, ?, ?, ?, ?, ?)
+		`, tpl.id, tpl.name, tpl.description, tpl.docType, tpl.version, 1, tpl.templatePath)
 		if err != nil {
+			fmt.Printf("[DB] SeedWorkflowTemplates erro insert template: %v\n", err)
 			slog.Warn("failed to seed template", "id", tpl.id, "error", err.Error())
 			continue
 		}
+		fmt.Printf("[DB] SeedWorkflowTemplates template inserido id=%s\n", tpl.id)
 
 		// Insert template fields with normative traceability
 		fields := []struct {
@@ -57,17 +63,21 @@ func SeedWorkflowTemplates(ctx context.Context, db *sql.DB) error {
 		}
 
 		for _, f := range fields {
+			fmt.Printf("[DB] SeedWorkflowTemplates inserindo field id=%s name=%s\n", f.id, f.fieldName)
 			_, err = db.ExecContext(ctx, `
 				INSERT INTO template_fields (id, template_id, field_name, label, type, required, source_requirement, normative_document)
 				VALUES (?, ?, ?, ?, ?, ?, ?, ?)
 			`, f.id, tpl.id, f.fieldName, f.label, f.fieldType, f.required, f.fieldName, f.normativeDocument)
 			if err != nil {
+				fmt.Printf("[DB] SeedWorkflowTemplates erro insert field: %v\n", err)
 				slog.Warn("failed to seed field", "field", f.fieldName, "error", err.Error())
 			}
 		}
 
 		slog.Info("template seeded", "id", tpl.id, "name", tpl.name)
+		fmt.Printf("[DB] SeedWorkflowTemplates template completo id=%s\n", tpl.id)
 	}
 
+	fmt.Println("[DB] SeedWorkflowTemplates finalizada")
 	return nil
 }

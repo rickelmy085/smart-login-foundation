@@ -4,8 +4,9 @@ import { ArrowRight, Bot, Clock, FileText, MessageSquareText, Sparkles, Trending
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { apiFetch } from "@/lib/api";
 import { getSession } from "@/lib/auth";
-import { historyItems, statusLabels, suggestedPrompts, topicColors, weeklyActivity } from "@/lib/mock-data";
+import { statusLabels, weeklyActivity } from "@/lib/mock-data";
 import { useEffect, useState } from "react";
 
 export const Route = createFileRoute("/app/")({
@@ -34,13 +35,40 @@ function greeting() {
   return "Boa noite";
 }
 
+type HistoryItem = {
+  id: string;
+  title: string;
+  preview: string;
+  status: string;
+  createdAt: string;
+  sources: number;
+};
+
 function DashboardPage() {
-  const [firstName, setFirstName] = useState("");
-  useEffect(() => {
-    getSession().then((s) => setFirstName(s?.name.split(" ")[0] ?? ""));
-  }, []);
+  const [fullName, setFullName] = useState("");
+  const [recent, setRecent] = useState<HistoryItem[]>([]);
   const max = Math.max(...weeklyActivity.map((d) => d.consultas));
-  const recent = historyItems.slice(0, 4);
+
+  useEffect(() => {
+    getSession().then((s) => setFullName(s?.name ?? ""));
+  }, []);
+
+  const firstName = fullName.split(" ")[0] ?? "";
+
+  useEffect(() => {
+    let cancelled = false;
+    const load = async () => {
+      try {
+        const res = await apiFetch("/api/history");
+        const data = (await res.json()) as { history: HistoryItem[] };
+        if (!cancelled) setRecent((data.history ?? []).slice(0, 4));
+      } catch {
+        if (!cancelled) setRecent([]);
+      }
+    };
+    load();
+    return () => { cancelled = true; };
+  }, []);
 
   return (
     <div className="mx-auto max-w-7xl space-y-6">
@@ -126,25 +154,31 @@ function DashboardPage() {
             </Button>
           </CardHeader>
           <CardContent>
-            <ul className="divide-y divide-border">
-              {recent.map((item) => (
-                <li key={item.id} className="flex items-start gap-3 py-3 first:pt-0 last:pb-0">
-                  <span className="mt-0.5 grid size-8 shrink-0 place-items-center rounded-lg bg-muted">
-                    <Bot className="size-4 text-muted-foreground" aria-hidden="true" />
-                  </span>
-                  <div className="min-w-0 flex-1">
-                    <p className="truncate text-sm font-medium">{item.title}</p>
-                    <p className="truncate text-xs text-muted-foreground">{item.preview}</p>
-                  </div>
-                  <div className="hidden shrink-0 flex-col items-end gap-1 sm:flex">
-                    <Badge variant="outline" className={topicColors[item.topic]}>
-                      {item.topic}
-                    </Badge>
-                    <span className="text-[11px] text-muted-foreground">{statusLabels[item.status]}</span>
-                  </div>
-                </li>
-              ))}
-            </ul>
+            {recent.length === 0 ? (
+              <p className="py-6 text-center text-sm text-muted-foreground">Nenhuma interação registrada ainda.</p>
+            ) : (
+              <ul className="divide-y divide-border">
+                {recent.map((item) => (
+                  <li key={item.id} className="flex items-start gap-3 py-3 first:pt-0 last:pb-0">
+                    <span className="mt-0.5 grid size-8 shrink-0 place-items-center rounded-lg bg-muted">
+                      <Bot className="size-4 text-muted-foreground" aria-hidden="true" />
+                    </span>
+                    <div className="min-w-0 flex-1">
+                      <p className="truncate text-sm font-medium">{item.title}</p>
+                      <p className="truncate text-xs text-muted-foreground">{item.preview}</p>
+                    </div>
+                    <div className="hidden shrink-0 flex-col items-end gap-1 sm:flex">
+                      <Badge variant="outline" className={statusVariant(item.status)}>
+                        {statusLabel(item.status)}
+                      </Badge>
+                      <span className="text-[11px] text-muted-foreground">
+                        {new Date(item.createdAt).toLocaleString("pt-BR")}
+                      </span>
+                    </div>
+                  </li>
+                ))}
+              </ul>
+            )}
           </CardContent>
         </Card>
       </div>
@@ -155,7 +189,7 @@ function DashboardPage() {
           Sugestões para começar
         </h2>
         <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
-          {suggestedPrompts.map((p) => (
+          {["Resuma a política de home office", "Quais documentos preciso para solicitar férias?", "Explique o fluxo de aprovação de compras", "Como abrir um chamado para o suporte de TI?"].map((p) => (
             <Link
               key={p}
               to="/app/copilot"
@@ -169,4 +203,26 @@ function DashboardPage() {
       </section>
     </div>
   );
+}
+
+function statusVariant(status: string) {
+  if (status === "generated" || status === "completed") return "bg-success/15 text-success border-success/30";
+  if (status === "blocked" || status === "needs_review") return "bg-destructive/15 text-destructive border-destructive/30";
+  if (status === "ready_to_generate" || status === "collecting_data" || status === "validating") return "bg-warning/20 text-warning-foreground dark:text-warning border-warning/40";
+  return "bg-muted text-muted-foreground";
+}
+
+function statusLabel(status: string) {
+  const map: Record<string, string> = {
+    detected: "Detectada",
+    collecting_data: "Coletando dados",
+    validating: "Validando",
+    ready_to_generate: "Pronta para gerar",
+    generating: "Gerando",
+    generated: "Gerada",
+    needs_review: "Revisão",
+    completed: "Concluída",
+    blocked: "Bloqueada",
+  };
+  return map[status] ?? status;
 }

@@ -26,6 +26,7 @@ type ScannedFile struct {
 //
 // Idempotente e side-effect-free: só lê, não modifica nada em disco.
 func ScanDir(root string) ([]ScannedFile, error) {
+	fmt.Printf("[KNOWLEDGE] ScanDir root=%s\n", root)
 	// Normaliza separadores para o SO atual (importante em Windows
 	// quando o caminho chega com "/" vindos de CLI/flag).
 	root = filepath.FromSlash(root)
@@ -52,17 +53,21 @@ func ScanDir(root string) ([]ScannedFile, error) {
 		return nil
 	})
 	if err != nil {
+		fmt.Printf("[KNOWLEDGE] ScanDir erro: %v\n", err)
 		return nil, err
 	}
 
 	sort.Slice(out, func(i, j int) bool { return out[i].Title < out[j].Title })
+	fmt.Printf("[KNOWLEDGE] ScanDir sucesso: %d arquivos encontrados\n", len(out))
 	return out, nil
 }
 
 // scanFile lê o arquivo e calcula seu SHA-256. Title é o nome sem extensão.
 func scanFile(path string) (ScannedFile, error) {
+	fmt.Printf("[KNOWLEDGE] scanFile path=%s\n", path)
 	f, err := os.Open(path)
 	if err != nil {
+		fmt.Printf("[KNOWLEDGE] scanFile erro open: %v\n", err)
 		return ScannedFile{}, err
 	}
 	defer f.Close()
@@ -70,10 +75,12 @@ func scanFile(path string) (ScannedFile, error) {
 	h := sha256.New()
 	size, err := io.Copy(h, f)
 	if err != nil {
+		fmt.Printf("[KNOWLEDGE] scanFile erro copy: %v\n", err)
 		return ScannedFile{}, err
 	}
 
 	title := strings.TrimSuffix(filepath.Base(path), filepath.Ext(path))
+	fmt.Printf("[KNOWLEDGE] scanFile sucesso path=%s title=%s size=%d\n", path, title, size)
 	return ScannedFile{
 		Path:  path,
 		Title: title,

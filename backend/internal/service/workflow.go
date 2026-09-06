@@ -12,6 +12,7 @@ import (
 	"strconv"
 	"strings"
 
+	"github.com/bsmart/abis/internal/document"
 	"github.com/bsmart/abis/internal/groq"
 	"github.com/bsmart/abis/internal/knowledge"
 	"github.com/bsmart/abis/internal/models"
@@ -70,7 +71,9 @@ Nunca invente procedure ou template_key se não estiver claro. Deixe vazio se in
 
 // ClassifyIntent uses the LLM to classify the intent of a user request.
 func (s *WorkflowService) ClassifyIntent(ctx context.Context, question string) (*models.IntentClassification, error) {
+	fmt.Printf("[WORKFLOW] ClassifyIntent iniciado question=%s\n", question)
 	if s.groq == nil || s.groq.Empty() {
+		fmt.Println("[WORKFLOW] ClassifyIntent groq client nao configurado")
 		return nil, errors.New("groq client not configured")
 	}
 
@@ -79,19 +82,25 @@ func (s *WorkflowService) ClassifyIntent(ctx context.Context, question string) (
 		{Role: "user", Content: fmt.Sprintf("Classifique a seguinte solicitação:\n\n\"%s\"", question)},
 	})
 	if err != nil {
+		fmt.Printf("[WORKFLOW] ClassifyIntent erro groq: %v\n", err)
 		return nil, fmt.Errorf("classify intent: %w", err)
 	}
+	fmt.Printf("[WORKFLOW] ClassifyIntent resposta LLM: %s\n", resp)
 
 	var classification models.IntentClassification
 	if err := json.Unmarshal([]byte(strings.TrimSpace(resp)), &classification); err != nil {
+		fmt.Printf("[WORKFLOW] ClassifyIntent erro parse JSON: %v\n", err)
 		return nil, fmt.Errorf("parse intent response: %w", err)
 	}
 
 	if classification.Intent == "" {
+		fmt.Println("[WORKFLOW] ClassifyIntent intent vazio")
 		return nil, ErrInvalidIntent
 	}
 
 	slog.Info("intent classified", "intent", classification.Intent, "confidence", classification.Confidence)
+	fmt.Printf("[WORKFLOW] ClassifyIntent sucesso intent=%s confidence=%.2f procedure=%s\n",
+		classification.Intent, classification.Confidence, classification.Procedure)
 	return &classification, nil
 }
 
@@ -117,7 +126,9 @@ Só retorne JSON válido.`
 
 // ExtractRequirements uses the LLM to extract requirements from RAG search results.
 func (s *WorkflowService) ExtractRequirements(ctx context.Context, procedure string, hits []knowledge.SearchHit) (*models.RequirementExtraction, error) {
+	fmt.Printf("[WORKFLOW] ExtractRequirements procedure=%s hits=%d\n", procedure, len(hits))
 	if s.groq == nil || s.groq.Empty() {
+		fmt.Println("[WORKFLOW] ExtractRequirements groq client nao configurado")
 		return nil, errors.New("groq client not configured")
 	}
 
@@ -142,8 +153,10 @@ func (s *WorkflowService) ExtractRequirements(ctx context.Context, procedure str
 		{Role: "user", Content: contextBuilder.String()},
 	}, 4096)
 	if err != nil {
+		fmt.Printf("[WORKFLOW] ExtractRequirements erro groq: %v\n", err)
 		return nil, fmt.Errorf("extract requirements: %w", err)
 	}
+	fmt.Printf("[WORKFLOW] ExtractRequirements resposta LLM: %s\n", resp)
 
 	// Try to parse JSON; if it fails, try extracting JSON from markdown
 	resp = strings.TrimSpace(resp)
@@ -164,14 +177,17 @@ func (s *WorkflowService) ExtractRequirements(ctx context.Context, procedure str
 		if idx >= 0 {
 			jsonStr := resp[idx:]
 			if err := json.Unmarshal([]byte(jsonStr), &extraction); err != nil {
+				fmt.Printf("[WORKFLOW] ExtractRequirements erro parse JSON: %v\n", err)
 				return nil, fmt.Errorf("parse requirements response: %w", err)
 			}
 		} else {
+			fmt.Printf("[WORKFLOW] ExtractRequirements erro parse JSON: %v\n", err)
 			return nil, fmt.Errorf("parse requirements response: %w", err)
 		}
 	}
 
 	slog.Info("requirements extracted", "count", len(extraction.Requirements), "procedure", extraction.Procedure)
+	fmt.Printf("[WORKFLOW] ExtractRequirements sucesso: %d requisitos procedure=%s\n", len(extraction.Requirements), extraction.Procedure)
 	return &extraction, nil
 }
 
@@ -179,8 +195,10 @@ func (s *WorkflowService) ExtractRequirements(ctx context.Context, procedure str
 
 // CreateTask creates a new workflow task from a user question.
 func (s *WorkflowService) CreateTask(ctx context.Context, employeeID, question string) (string, error) {
+	fmt.Printf("[WORKFLOW] CreateTask employeeID=%s question=%s\n", employeeID, question)
 	classification, err := s.ClassifyIntent(ctx, question)
 	if err != nil {
+		fmt.Printf("[WORKFLOW] CreateTask erro classify: %v\n", err)
 		return "", err
 	}
 
@@ -195,32 +213,41 @@ func (s *WorkflowService) CreateTask(ctx context.Context, employeeID, question s
 	}
 
 	if err := s.repo.CreateTask(ctx, task); err != nil {
+		fmt.Printf("[WORKFLOW] CreateTask erro repo: %v\n", err)
 		return "", fmt.Errorf("create task: %w", err)
 	}
 
 	slog.Info("task created", "id", taskID, "intent", classification.Intent)
+	fmt.Printf("[WORKFLOW] CreateTask sucesso taskID=%s intent=%s\n", taskID, classification.Intent)
 	return taskID, nil
 }
 
 // GetTask retrieves a task with all its details (requirements, data, sources).
 func (s *WorkflowService) GetTask(ctx context.Context, taskID string) (*TaskDetail, error) {
+	fmt.Printf("[WORKFLOW] GetTask taskID=%s\n", taskID)
 	task, err := s.repo.GetTask(ctx, taskID)
 	if err != nil {
 		if err == sql.ErrNoRows {
+			fmt.Printf("[WORKFLOW] GetTask task nao encontrada taskID=%s\n", taskID)
 			return nil, ErrTaskNotFound
 		}
+		fmt.Printf("[WORKFLOW] GetTask erro repo: %v\n", err)
 		return nil, err
 	}
+	fmt.Printf("[WORKFLOW] GetTask sucesso taskID=%s status=%s\n", taskID, task.Status)
 
 	requirements, err := s.repo.GetRequirements(ctx, taskID)
 	if err != nil {
+		fmt.Printf("[WORKFLOW] GetTask erro get requirements: %v\n", err)
 		return nil, fmt.Errorf("get requirements: %w", err)
 	}
 
 	data, err := s.repo.GetData(ctx, taskID)
 	if err != nil {
+		fmt.Printf("[WORKFLOW] GetTask erro get data: %v\n", err)
 		return nil, fmt.Errorf("get data: %w", err)
 	}
+	fmt.Printf("[WORKFLOW] GetTask requirements=%d data_fields=%d\n", len(requirements), len(data))
 
 	detail := &TaskDetail{
 		Task:         task,
@@ -232,6 +259,7 @@ func (s *WorkflowService) GetTask(ctx context.Context, taskID string) (*TaskDeta
 	if task.TemplateID != "" {
 		tpl, _ := s.repo.GetTemplate(ctx, task.TemplateID)
 		detail.Template = &tpl
+		fmt.Printf("[WORKFLOW] GetTask template carregado templateID=%s\n", task.TemplateID)
 	}
 
 	return detail, nil
@@ -302,13 +330,17 @@ func (s *WorkflowService) SetData(ctx context.Context, taskID, field, value stri
 // StartProcessing begins processing a task: search norms, extract requirements,
 // select template, and move to collecting_data state.
 func (s *WorkflowService) StartProcessing(ctx context.Context, taskID string) (*ProcessingResult, error) {
+	fmt.Printf("[WORKFLOW] StartProcessing taskID=%s\n", taskID)
 	task, err := s.repo.GetTask(ctx, taskID)
 	if err != nil {
 		if err == sql.ErrNoRows {
+			fmt.Printf("[WORKFLOW] StartProcessing task nao encontrada taskID=%s\n", taskID)
 			return nil, ErrTaskNotFound
 		}
+		fmt.Printf("[WORKFLOW] StartProcessing erro repo: %v\n", err)
 		return nil, err
 	}
+	fmt.Printf("[WORKFLOW] StartProcessing task encontrada status=%s intent=%s\n", task.Status, task.Intent)
 
 	// If it's a knowledge_query/procedure_query, just do a search
 	result := &ProcessingResult{
@@ -321,14 +353,18 @@ func (s *WorkflowService) StartProcessing(ctx context.Context, taskID string) (*
 	if proc == "" {
 		proc = task.OriginalRequest
 	}
+	fmt.Printf("[WORKFLOW] StartProcessing procedure=%s\n", proc)
 
 	// Search for relevant chunks
 	hits, err := s.searcher.Search(ctx, proc, knowledge.SearchOptions{Limit: 20})
 	if err != nil {
+		fmt.Printf("[WORKFLOW] StartProcessing erro search: %v\n", err)
 		return nil, fmt.Errorf("search: %w", err)
 	}
+	fmt.Printf("[WORKFLOW] StartProcessing search sucesso: %d hits\n", len(hits))
 
 	if len(hits) == 0 {
+		fmt.Println("[WORKFLOW] StartProcessing nenhum hit encontrado")
 		return &ProcessingResult{
 			TaskID:    taskID,
 			Answered:  true,
@@ -340,12 +376,14 @@ func (s *WorkflowService) StartProcessing(ctx context.Context, taskID string) (*
 	// Extract requirements using LLM
 	extraction, err := s.ExtractRequirements(ctx, proc, hits)
 	if err != nil {
+		fmt.Printf("[WORKFLOW] StartProcessing erro extract requirements: %v\n", err)
 		slog.Warn("extract requirements failed, falling back to search-only", "error", err. Error())
 		result.Answered = true
 		result.Message = "Encontrei informações relevantes, mas não consegui estruturar os requisitos. Consulte os trechos abaixo:"
 		result.Sources = hits
 		return result, nil
 	}
+	fmt.Printf("[WORKFLOW] StartProcessing requirements extraidas: %d\n", len(extraction.Requirements))
 
 	// Persist requirements
 	for i, req := range extraction.Requirements {
@@ -360,6 +398,7 @@ func (s *WorkflowService) StartProcessing(ctx context.Context, taskID string) (*
 			Rank:           i,
 		}
 		if err := s.repo.CreateRequirement(ctx, r); err != nil {
+			fmt.Printf("[WORKFLOW] StartProcessing erro create requirement: %v\n", err)
 			slog.Warn("failed to create requirement", "error", err.Error())
 		}
 		result.Requirements = append(result.Requirements, r)
@@ -368,26 +407,34 @@ func (s *WorkflowService) StartProcessing(ctx context.Context, taskID string) (*
 	// Try to find a matching template
 	template, err := s.repo.GetTemplateByKey(ctx, proc)
 	if err != nil && err != sql.ErrNoRows {
+		fmt.Printf("[WORKFLOW] StartProcessing erro template lookup: %v\n", err)
 		slog.Warn("template lookup failed", "error", err.Error())
 	}
 	if template.ID != "" {
 		result.Template = &template
 		if err := s.repo.UpdateTaskTemplate(ctx, taskID, template.ID); err != nil {
+			fmt.Printf("[WORKFLOW] StartProcessing erro update template: %v\n", err)
 			slog.Warn("failed to update task template", "error", err.Error())
 		}
+		fmt.Printf("[WORKFLOW] StartProcessing template encontrado templateID=%s\n", template.ID)
+	} else {
+		fmt.Println("[WORKFLOW] StartProcessing nenhum template encontrado")
 	}
 
 	// Update task status to collecting_data
 	if task.Intent == models.IntentDocumentGeneration && template.ID != "" {
 		s.repo.UpdateTaskStatus(ctx, taskID, models.StatusCollectingData, template.ID)
+		fmt.Println("[WORKFLOW] StartProcessing status atualizado para collecting_data")
 	} else if task.Intent == models.IntentDocumentGeneration {
 		s.repo.UpdateTaskStatus(ctx, taskID, models.StatusBlocked, "")
 		result.Blocked = true
 		result.Message = "Não foi possível identificar um template aplicável. Consulte os normativos ou entre em contato com a área responsável."
+		fmt.Println("[WORKFLOW] StartProcessing bloqueado: template nao encontrado")
 	} else {
 		s.repo.UpdateTaskStatus(ctx, taskID, models.StatusCompleted, "")
 		result.Answered = true
 		result.Message = extraction.Summary
+		fmt.Println("[WORKFLOW] StartProcessing status atualizado para completed")
 	}
 
 	// Store the found sources
@@ -418,34 +465,46 @@ type MessageResult struct {
 // ProcessMessage handles a message sent to an existing task.
 // It stores the data and checks if validation/generation can proceed.
 func (s *WorkflowService) ProcessMessage(ctx context.Context, taskID, message string) (*MessageResult, error) {
+	fmt.Printf("[WORKFLOW] ProcessMessage taskID=%s message=%s\n", taskID, message)
 	task, err := s.repo.GetTask(ctx, taskID)
 	if err != nil {
 		if err == sql.ErrNoRows {
+			fmt.Printf("[WORKFLOW] ProcessMessage task nao encontrada taskID=%s\n", taskID)
 			return nil, ErrTaskNotFound
 		}
+		fmt.Printf("[WORKFLOW] ProcessMessage erro repo: %v\n", err)
 		return nil, err
 	}
+	fmt.Printf("[WORKFLOW] ProcessMessage task encontrada status=%s\n", task.Status)
 
 	// If we're in collecting_data, try to parse key-value data from the message
 	if task.Status == models.StatusCollectingData || task.Status == models.StatusValidating {
+		fmt.Printf("[WORKFLOW] ProcessMessage coletando dados taskID=%s\n", taskID)
 		requirements, err := s.repo.GetRequirements(ctx, taskID)
 		if err != nil {
+			fmt.Printf("[WORKFLOW] ProcessMessage erro get requirements: %v\n", err)
 			return nil, fmt.Errorf("get requirements: %w", err)
 		}
+		fmt.Printf("[WORKFLOW] ProcessMessage requirements encontradas: %d\n", len(requirements))
 
 		// Try to extract data fields from the message using LLM
 		extractedData, err := s.ExtractData(ctx, message, requirements)
 		if err != nil {
+			fmt.Printf("[WORKFLOW] ProcessMessage erro extract data: %v\n", err)
 			slog.Warn("extract data failed", "error", err.Error())
 			return &MessageResult{
 				Answer: "Não consegui entender os dados informados. Pode reformular?",
 			}, nil
 		}
+		fmt.Printf("[WORKFLOW] ProcessMessage dados extraidos: %v\n", extractedData)
 
 		for field, value := range extractedData {
 			if value != "" {
 				if err := s.repo.SetData(ctx, taskID, field, value); err != nil {
+					fmt.Printf("[WORKFLOW] ProcessMessage erro set data field=%s: %v\n", field, err)
 					slog.Warn("failed to set data", "field", field, "error", err.Error())
+				} else {
+					fmt.Printf("[WORKFLOW] ProcessMessage set data field=%s value=%s\n", field, value)
 				}
 			}
 		}
@@ -453,8 +512,10 @@ func (s *WorkflowService) ProcessMessage(ctx context.Context, taskID, message st
 		// Check for missing fields
 		missing, err := s.GetMissingFields(ctx, taskID)
 		if err != nil {
+			fmt.Printf("[WORKFLOW] ProcessMessage erro get missing fields: %v\n", err)
 			return nil, err
 		}
+		fmt.Printf("[WORKFLOW] ProcessMessage missing fields: %d\n", len(missing))
 
 		if len(missing) > 0 {
 			result := &MessageResult{
@@ -465,10 +526,12 @@ func (s *WorkflowService) ProcessMessage(ctx context.Context, taskID, message st
 
 		// All required fields are filled, move to validation
 		s.repo.UpdateTaskStatus(ctx, taskID, models.StatusValidating, task.TemplateID)
+		fmt.Println("[WORKFLOW] ProcessMessage todos campos preenchidos, indo para validacao")
 		return s.ValidateAndProceed(ctx, taskID)
 	}
 
 	// Default: return the message as-is
+	fmt.Println("[WORKFLOW] ProcessMessage retornando mensagem como esta")
 	return &MessageResult{Answer: message}, nil
 }
 
@@ -511,18 +574,24 @@ Preencha apenas com informações explícitas na mensagem.`, strings.Join(reqNam
 
 // ValidateAndProceed validates the task data and either generates the document or reports issues.
 func (s *WorkflowService) ValidateAndProceed(ctx context.Context, taskID string) (*MessageResult, error) {
+	fmt.Printf("[WORKFLOW] ValidateAndProceed taskID=%s\n", taskID)
 	task, err := s.repo.GetTask(ctx, taskID)
 	if err != nil {
+		fmt.Printf("[WORKFLOW] ValidateAndProceed erro get task: %v\n", err)
 		return nil, err
 	}
+	fmt.Printf("[WORKFLOW] ValidateAndProceed task encontrada status=%s\n", task.Status)
 
 	// Validate all required fields are present
 	missing, err := s.GetMissingFields(ctx, taskID)
 	if err != nil {
+		fmt.Printf("[WORKFLOW] ValidateAndProceed erro get missing: %v\n", err)
 		return nil, err
 	}
+	fmt.Printf("[WORKFLOW] ValidateAndProceed missing fields: %d\n", len(missing))
 
 	if len(missing) > 0 {
+		fmt.Printf("[WORKFLOW] ValidateAndProceed campos faltando: %v\n", formatMissingFieldNames(missing))
 		return &MessageResult{
 			Answer: fmt.Sprintf("Os seguintes campos são obrigatórios e estão faltando: %s", formatMissingFieldNames(missing)),
 		}, nil
@@ -531,23 +600,30 @@ func (s *WorkflowService) ValidateAndProceed(ctx context.Context, taskID string)
 	// Check deterministic rules
 	taskData, err := s.repo.GetData(ctx, taskID)
 	if err != nil {
+		fmt.Printf("[WORKFLOW] ValidateAndProceed erro get data: %v\n", err)
 		return nil, err
 	}
+	fmt.Printf("[WORKFLOW] ValidateAndProceed data encontrada: %d campos\n", len(taskData))
 
 	// Evaluate value-based rules
 	rules := s.evaluateRules(taskData, task.Procedure)
+	fmt.Printf("[WORKFLOW] ValidateAndProceed rules avaliadas: %d\n", len(rules))
 	for _, rule := range rules {
 		if !rule.Passed {
+			fmt.Printf("[WORKFLOW] ValidateAndProceed regra falhou: %s\n", rule.Description)
 			return &MessageResult{
 				Answer: fmt.Sprintf("Validação falhou: %s", rule.Description),
 			}, nil
 		}
 	}
+	fmt.Println("[WORKFLOW] ValidateAndProceed todas regras passaram")
 
 	// Move to ready_to_generate
 	if err := s.repo.UpdateTaskStatus(ctx, taskID, models.StatusReadyToGenerate, task.TemplateID); err != nil {
+		fmt.Printf("[WORKFLOW] ValidateAndProceed erro update status: %v\n", err)
 		return nil, err
 	}
+	fmt.Println("[WORKFLOW] ValidateAndProceed status atualizado para ready_to_generate")
 
 	return &MessageResult{
 		Answer: "Todos os dados foram validados. O documento está pronto para geração.",
@@ -601,49 +677,64 @@ func (s *WorkflowService) evaluateRules(data map[string]string, procedure string
 
 // GenerateDocument generates DOCX and PDF from the template.
 func (s *WorkflowService) GenerateDocument(ctx context.Context, taskID string) (*models.DocumentRun, error) {
+	fmt.Printf("[WORKFLOW] GenerateDocument taskID=%s\n", taskID)
 	task, err := s.repo.GetTask(ctx, taskID)
 	if err != nil {
 		if err == sql.ErrNoRows {
+			fmt.Printf("[WORKFLOW] GenerateDocument task nao encontrada taskID=%s\n", taskID)
 			return nil, ErrTaskNotFound
 		}
+		fmt.Printf("[WORKFLOW] GenerateDocument erro repo: %v\n", err)
 		return nil, err
 	}
+	fmt.Printf("[WORKFLOW] GenerateDocument task encontrada status=%s templateID=%s\n", task.Status, task.TemplateID)
 
 	if task.Status != models.StatusReadyToGenerate {
+		fmt.Printf("[WORKFLOW] GenerateDocument task nao pronta status=%s\n", task.Status)
 		return nil, fmt.Errorf("task not ready for generation: current status %s", task.Status)
 	}
 
 	if task.TemplateID == "" {
+		fmt.Println("[WORKFLOW] GenerateDocument templateID vazio")
 		return nil, ErrTemplateNotFound
 	}
 
 	template, err := s.repo.GetTemplate(ctx, task.TemplateID)
 	if err != nil {
+		fmt.Printf("[WORKFLOW] GenerateDocument erro get template: %v\n", err)
 		return nil, ErrTemplateNotFound
 	}
+	fmt.Printf("[WORKFLOW] GenerateDocument template encontrado templateID=%s name=%s\n", template.ID, template.Name)
 
 	taskData, err := s.repo.GetData(ctx, taskID)
 	if err != nil {
+		fmt.Printf("[WORKFLOW] GenerateDocument erro get data: %v\n", err)
 		return nil, fmt.Errorf("get data: %w", err)
 	}
+	fmt.Printf("[WORKFLOW] GenerateDocument data encontrada: %d campos\n", len(taskData))
 
 	// Validate template
 	fields, err := s.repo.GetTemplateFields(ctx, template.ID)
 	if err != nil {
+		fmt.Printf("[WORKFLOW] GenerateDocument erro get template fields: %v\n", err)
 		return nil, fmt.Errorf("get template fields: %w", err)
 	}
+	fmt.Printf("[WORKFLOW] GenerateDocument template fields: %d\n", len(fields))
 
 	// Check all required fields
 	for _, f := range fields {
 		if f.Required {
 			if val, exists := taskData[f.FieldName]; !exists || strings.TrimSpace(val) == "" {
+				fmt.Printf("[WORKFLOW] GenerateDocument campo obrigatorio faltando: %s\n", f.FieldName)
 				return nil, fmt.Errorf("missing required field: %s", f.FieldName)
 			}
 		}
 	}
+	fmt.Println("[WORKFLOW] GenerateDocument todos campos obrigatorios preenchidos")
 
 	// Get requirements for source tracking
 	requirements, _ := s.repo.GetRequirements(ctx, taskID)
+	fmt.Printf("[WORKFLOW] GenerateDocument requirements para source tracking: %d\n", len(requirements))
 
 	// Generate the document
 	runID := "run-" + uuid.NewString()
@@ -657,19 +748,55 @@ func (s *WorkflowService) GenerateDocument(ctx context.Context, taskID string) (
 	}
 
 	if err := s.repo.CreateDocumentRun(ctx, run); err != nil {
+		fmt.Printf("[WORKFLOW] GenerateDocument erro create run: %v\n", err)
 		return nil, fmt.Errorf("create document run: %w", err)
 	}
+	fmt.Printf("[WORKFLOW] GenerateDocument run criado runID=%s\n", runID)
 
 	// Generate DOCX
-	docxPath, err := s.generateDocx(ctx, template, fields, taskData, runID)
+	raw, err := document.ReadTextTemplate(template.TemplatePath)
 	if err != nil {
+		fmt.Printf("[WORKFLOW] GenerateDocument erro read template: %v\n", err)
+		return nil, fmt.Errorf("read template: %w", err)
+	}
+	filled := document.ApplyPlaceholders(raw, taskData)
+
+	outputDir := filepath.Join("data", "documents", runID)
+	if err := os.MkdirAll(outputDir, 0o755); err != nil {
+		fmt.Printf("[WORKFLOW] GenerateDocument erro mkdir: %v\n", err)
+		return nil, fmt.Errorf("create output dir: %w", err)
+	}
+
+	docxBytes, err := document.GenerateDOCX(template.Name, filled)
+	if err != nil {
+		fmt.Printf("[WORKFLOW] GenerateDocument erro generate docx: %v\n", err)
 		slog.Error("docx generation failed", "error", err.Error())
 		s.repo.UpdateDocumentRunStatus(ctx, runID, models.RunStatusRejected, "", "")
 		return nil, fmt.Errorf("generate docx: %w", err)
 	}
 
-	// Generate PDF would go here (requires external tool or library)
+	docxPath := filepath.Join(outputDir, "document.docx")
+	if err := os.WriteFile(docxPath, docxBytes, 0o644); err != nil {
+		fmt.Printf("[WORKFLOW] GenerateDocument erro write docx: %v\n", err)
+		return nil, fmt.Errorf("write docx: %w", err)
+	}
+	fmt.Printf("[WORKFLOW] GenerateDocument docx gerado path=%s size=%d\n", docxPath, len(docxBytes))
+
+	// Generate PDF from the same filled content
+	pdfBytes, err := document.GeneratePDF(template.Name, filled)
+	if err != nil {
+		fmt.Printf("[WORKFLOW] GenerateDocument erro generate pdf: %v\n", err)
+		slog.Error("pdf generation failed", "error", err.Error())
+		s.repo.UpdateDocumentRunStatus(ctx, runID, models.RunStatusRejected, docxPath, "")
+		return nil, fmt.Errorf("generate pdf: %w", err)
+	}
+
 	pdfPath := strings.TrimSuffix(docxPath, ".docx") + ".pdf"
+	if err := os.WriteFile(pdfPath, pdfBytes, 0o644); err != nil {
+		fmt.Printf("[WORKFLOW] GenerateDocument erro write pdf: %v\n", err)
+		return nil, fmt.Errorf("write pdf: %w", err)
+	}
+	fmt.Printf("[WORKFLOW] GenerateDocument pdf gerado path=%s size=%d\n", pdfPath, len(pdfBytes))
 
 	// Record sources
 	for _, req := range requirements {
@@ -685,72 +812,19 @@ func (s *WorkflowService) GenerateDocument(ctx context.Context, taskID string) (
 		}
 		s.repo.CreateDocumentSource(ctx, ds)
 	}
+	fmt.Printf("[WORKFLOW] GenerateDocument fontes registradas: %d\n", len(requirements))
 
 	// Update run status
 	if err := s.repo.UpdateDocumentRunStatus(ctx, runID, models.RunStatusPending, docxPath, pdfPath); err != nil {
+		fmt.Printf("[WORKFLOW] GenerateDocument erro update run status: %v\n", err)
 		return nil, fmt.Errorf("update run status: %w", err)
 	}
 
 	// Update task status
 	s.repo.UpdateTaskStatus(ctx, taskID, models.StatusGenerated, task.TemplateID)
+	fmt.Printf("[WORKFLOW] GenerateDocument sucesso runID=%s\n", runID)
 
 	return &run, nil
-}
-
-// generateDocx creates a DOCX file from the template and data.
-func (s *WorkflowService) generateDocx(ctx context.Context, template models.DocumentTemplate, fields []models.TemplateField, data map[string]string, runID string) (string, error) {
-	// Read template content
-	content, err := os.ReadFile(template.TemplatePath)
-	if err != nil {
-		return "", fmt.Errorf("read template: %w", err)
-	}
-
-	// Replace placeholders in the template
-	result := string(content)
-	for _, f := range fields {
-		placeholder := "{{" + f.FieldName + "}}"
-		value := data[f.FieldName]
-		if value == "" {
-			value = "[" + f.Label + "]"
-		}
-		result = strings.ReplaceAll(result, placeholder, value)
-	}
-
-	// Create output directory
-	outputDir := filepath.Join("data", "documents", runID)
-	if err := os.MkdirAll(outputDir, 0o755); err != nil {
-		return "", fmt.Errorf("create output dir: %w", err)
-	}
-
-	docxPath := filepath.Join(outputDir, "document.docx")
-
-	// If the template is a DOCX file, process it properly
-	// If it's a text template, generate a simple DOCX
-	if strings.HasSuffix(template.TemplatePath, ".docx") {
-		// Open the existing DOCX
-		docContent, err := os.ReadFile(template.TemplatePath)
-		if err != nil {
-			return "", fmt.Errorf("read docx template: %w", err)
-		}
-		// For now, write the content directly - a full implementation would
-		// use a proper DOCX library to replace placeholders in the XML
-		result = string(docContent)
-		for _, f := range fields {
-			placeholder := "{{" + f.FieldName + "}}"
-			value := data[f.FieldName]
-			if value == "" {
-				value = "[" + f.Label + "]"
-			}
-			result = strings.ReplaceAll(result, placeholder, value)
-		}
-	}
-
-	// Write the DOCX content
-	if err := os.WriteFile(docxPath, []byte(result), 0o644); err != nil {
-		return "", fmt.Errorf("write docx: %w", err)
-	}
-
-	return docxPath, nil
 }
 
 // GetDocumentsByEmployee returns all document runs for an employee.
@@ -782,6 +856,102 @@ func (s *WorkflowService) GetTaskSources(ctx context.Context, taskID string) ([]
 // GetDocumentSources returns the normative sources recorded for a document run.
 func (s *WorkflowService) GetDocumentSources(ctx context.Context, runID string) ([]models.DocumentSource, error) {
 	return s.repo.GetDocumentSources(ctx, runID)
+}
+
+// GetDocumentRunPath returns the local file path for a document run.
+func (s *WorkflowService) GetDocumentRunPath(ctx context.Context, runID string) (string, error) {
+	run, err := s.repo.GetDocumentRun(ctx, runID)
+	if err != nil {
+		return "", err
+	}
+	if run.DocxPath == "" {
+		return "", fmt.Errorf("document run has no docx path")
+	}
+	return run.DocxPath, nil
+}
+
+// GetHistory returns a unified history view for the authenticated employee.
+func (s *WorkflowService) GetHistory(ctx context.Context, employeeID string) ([]models.HistoryItem, error) {
+	fmt.Printf("[WORKFLOW] GetHistory employeeID=%s\n", employeeID)
+	items, err := s.repo.GetHistory(ctx, employeeID)
+	if err != nil {
+		fmt.Printf("[WORKFLOW] GetHistory erro: %v\n", err)
+		return nil, err
+	}
+	fmt.Printf("[WORKFLOW] GetHistory sucesso count=%d\n", len(items))
+	return items, nil
+}
+
+// ListTemplates returns all document templates.
+func (s *WorkflowService) ListTemplates(ctx context.Context) ([]models.DocumentTemplate, error) {
+	fmt.Printf("[WORKFLOW] ListTemplates\n")
+	return s.repo.ListTemplates(ctx)
+}
+
+// GenerateDocumentFromTemplate generates a document from a template with provided data.
+func (s *WorkflowService) GenerateDocumentFromTemplate(ctx context.Context, templateID, employeeID string, data map[string]string) (*models.DocumentRun, error) {
+	fmt.Printf("[WORKFLOW] GenerateDocumentFromTemplate templateID=%s employeeID=%s\n", templateID, employeeID)
+
+	template, err := s.repo.GetTemplate(ctx, templateID)
+	if err != nil {
+		return nil, fmt.Errorf("template not found: %w", err)
+	}
+
+	// Read template
+	raw, err := document.ReadTextTemplate(template.TemplatePath)
+	if err != nil {
+		return nil, fmt.Errorf("read template: %w", err)
+	}
+
+	// Apply placeholders
+	filled := document.ApplyPlaceholders(raw, data)
+
+	// Generate DOCX
+	docxBytes, err := document.GenerateDOCX(template.Name, filled)
+	if err != nil {
+		return nil, fmt.Errorf("generate docx: %w", err)
+	}
+
+	// Generate PDF
+	pdfBytes, err := document.GeneratePDF(template.Name, filled)
+	if err != nil {
+		return nil, fmt.Errorf("generate pdf: %w", err)
+	}
+
+	// Save files
+	runID := "run-" + uuid.NewString()
+	outputDir := filepath.Join("data", "documents", runID)
+	if err := os.MkdirAll(outputDir, 0o755); err != nil {
+		return nil, fmt.Errorf("create output dir: %w", err)
+	}
+
+	docxPath := filepath.Join(outputDir, "document.docx")
+	if err := os.WriteFile(docxPath, docxBytes, 0o644); err != nil {
+		return nil, fmt.Errorf("write docx: %w", err)
+	}
+
+	pdfPath := filepath.Join(outputDir, "document.pdf")
+	if err := os.WriteFile(pdfPath, pdfBytes, 0o644); err != nil {
+		return nil, fmt.Errorf("write pdf: %w", err)
+	}
+
+	// Create document run
+	run := &models.DocumentRun{
+		ID:              runID,
+		EmployeeID:      employeeID,
+		TemplateID:      template.ID,
+		TemplateVersion: template.Version,
+		Status:          models.RunStatusGenerated,
+		DocxPath:        docxPath,
+		PdfPath:         pdfPath,
+	}
+
+	if err := s.repo.CreateDocumentRun(ctx, *run); err != nil {
+		return nil, fmt.Errorf("create document run: %w", err)
+	}
+
+	fmt.Printf("[WORKFLOW] GenerateDocumentFromTemplate sucesso runID=%s\n", runID)
+	return run, nil
 }
 
 func formatMissingFieldNames(missing []MissingField) string {

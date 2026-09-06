@@ -1,6 +1,7 @@
 package knowledge
 
 import (
+	"fmt" // debug prints
 	"strings"
 	"unicode"
 )
@@ -20,6 +21,7 @@ import (
 // o que já trata a busca tolerante a acentos. Normalizar aqui evitaria
 // devolver texto sem acentos ao usuário (o que fica esquisito na UI).
 func Normalize(in string) string {
+	fmt.Printf("[KNOWLEDGE] Normalize iniciado input_length=%d\n", len(in))
 	s := in
 
 	// CRLF, CR, tab → espaço.
@@ -66,5 +68,7 @@ func Normalize(in string) string {
 		prevSpace = false
 	}
 
-	return strings.TrimSpace(b.String())
+	output := strings.TrimSpace(b.String())
+	fmt.Printf("[KNOWLEDGE] Normalize finalizado output_length=%d\n", len(output))
+	return output
 }

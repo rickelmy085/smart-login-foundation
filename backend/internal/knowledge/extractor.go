@@ -24,18 +24,22 @@ type ExtractResult struct {
 //   - Encoding de acentuação pode vir bagunçado em PDFs muito antigos;
 //     o Normalizer a jusante ajuda a amenizar.
 func ExtractPDF(path string) (ExtractResult, error) {
+	fmt.Printf("[KNOWLEDGE] ExtractPDF iniciado path=%s\n", path)
 	f, r, err := pdf.Open(path)
 	if err != nil {
+		fmt.Printf("[KNOWLEDGE] ExtractPDF erro open: %v\n", err)
 		return ExtractResult{}, fmt.Errorf("open pdf %s: %w", path, err)
 	}
 	defer f.Close()
 
 	var buf bytes.Buffer
 	pageCount := r.NumPage()
+	fmt.Printf("[KNOWLEDGE] ExtractPDF PDF aberto pages=%d\n", pageCount)
 
 	for pageIdx := 1; pageIdx <= pageCount; pageIdx++ {
 		page := r.Page(pageIdx)
 		if page.V.IsNull() {
+			fmt.Printf("[KNOWLEDGE] ExtractPDF pagina %d vazia\n", pageIdx)
 			continue
 		}
 		// page.GetTextByFont não existe nesta versão; usamos o Text().
@@ -43,11 +47,13 @@ func ExtractPDF(path string) (ExtractResult, error) {
 		if err != nil {
 			// Não abortamos o documento inteiro por uma página ruim.
 			// Apenas seguimos e marcamos nos logs.
+			fmt.Printf("[KNOWLEDGE] ExtractPDF erro pagina %d: %v\n", pageIdx, err)
 			continue
 		}
 		buf.WriteString(text)
 		buf.WriteString("\n\n") // separador entre páginas
 	}
+	fmt.Printf("[KNOWLEDGE] ExtractPDF texto extraido length=%d\n", buf.Len())
 
 	return ExtractResult{Text: buf.String(), PageCount: pageCount}, nil
 }

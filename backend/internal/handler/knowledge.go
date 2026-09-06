@@ -6,6 +6,7 @@ package handler
 
 import (
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"strconv"
 
@@ -47,11 +48,13 @@ type SearchHitResponse struct {
 func (h *KnowledgeHandler) Search(w http.ResponseWriter, r *http.Request) {
 	q := r.URL.Query().Get("q")
 	limitStr := r.URL.Query().Get("limit")
+	fmt.Printf("[KNOWLEDGE] Search query=%s limitStr=%s\n", q, limitStr)
 
 	// Se não veio em query string, tenta ler do body.
 	if q == "" && r.ContentLength > 0 {
 		var body SearchRequest
 		if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+			fmt.Printf("[KNOWLEDGE] Search erro decode JSON: %v\n", err)
 			writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid JSON body"})
 			return
 		}
@@ -59,9 +62,11 @@ func (h *KnowledgeHandler) Search(w http.ResponseWriter, r *http.Request) {
 		if body.Limit > 0 {
 			limitStr = strconv.Itoa(body.Limit)
 		}
+		fmt.Printf("[KNOWLEDGE] Search body query=%s limit=%d\n", q, body.Limit)
 	}
 
 	if q == "" {
+		fmt.Println("[KNOWLEDGE] Search query vazia")
 		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "q is required"})
 		return
 	}
@@ -72,12 +77,15 @@ func (h *KnowledgeHandler) Search(w http.ResponseWriter, r *http.Request) {
 			limit = n
 		}
 	}
+	fmt.Printf("[KNOWLEDGE] Search executando busca q=%s limit=%d\n", q, limit)
 
 	hits, err := h.searcher.Search(r.Context(), q, knowledge.SearchOptions{Limit: limit})
 	if err != nil {
+		fmt.Printf("[KNOWLEDGE] Search erro: %v\n", err)
 		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": err.Error()})
 		return
 	}
+	fmt.Printf("[KNOWLEDGE] Search sucesso: %d resultados\n", len(hits))
 
 	resp := make([]SearchHitResponse, 0, len(hits))
 	for _, hit := range hits {
