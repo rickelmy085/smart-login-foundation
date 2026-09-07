@@ -27,6 +27,39 @@ export async function apiFetch(path: string, init: RequestInit = {}) {
   return res;
 }
 
+export async function downloadDocument(path: string, filename: string): Promise<void> {
+  const token = getToken();
+  const headers: Record<string, string> = {};
+  if (token) {
+    headers["Authorization"] = `Bearer ${token}`;
+  }
+
+  const res = await fetch(`${API_BASE}${path}`, {
+    headers,
+    credentials: "omit",
+  });
+
+  if (res.status === 401) {
+    clearToken();
+    throw new Error("unauthorized");
+  }
+
+  if (!res.ok) {
+    const body = await res.text();
+    throw new Error(body || `request failed with status ${res.status}`);
+  }
+
+  const blob = await res.blob();
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = filename;
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  URL.revokeObjectURL(url);
+}
+
 export function getToken(): string | null {
   if (typeof window === "undefined") return null;
   return localStorage.getItem("bsmart-token");

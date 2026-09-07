@@ -112,3 +112,4 @@ func TestFormatMissingFieldNames(t *testing.T) {
 		t.Error("expected non-empty result")
 	}
 }
+

@@ -6,6 +6,7 @@ import { toast } from "sonner";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
+import { downloadDocument } from "@/lib/api";
 import {
   getTask,
   processTask,
@@ -294,17 +295,37 @@ function TaskDetailPage() {
             <CardTitle className="text-base">Documento gerado</CardTitle>
           </CardHeader>
           <CardContent className="flex flex-wrap gap-2">
-            <Button asChild variant="secondary">
-              <a href={`/api/documents/${id}/docx`} download>
-                <Download className="mr-2 size-4" aria-hidden="true" />
-                Baixar DOCX
-              </a>
+            <Button
+              variant="secondary"
+              onClick={async () => {
+                try {
+                  await downloadDocument(
+                    `/api/documents/${id}/docx`,
+                    `ABIS-documento-${id}.docx`,
+                  );
+                } catch (err) {
+                  toast.error(err instanceof Error ? err.message : "Erro ao baixar documento.");
+                }
+              }}
+            >
+              <Download className="mr-2 size-4" aria-hidden={true} />
+              Baixar DOCX
             </Button>
-            <Button asChild variant="secondary">
-              <a href={`/api/documents/${id}/pdf`} download>
-                <Download className="mr-2 size-4" aria-hidden="true" />
-                Baixar PDF
-              </a>
+            <Button
+              variant="secondary"
+              onClick={async () => {
+                try {
+                  await downloadDocument(
+                    `/api/documents/${id}/pdf`,
+                    `ABIS-documento-${id}.pdf`,
+                  );
+                } catch (err) {
+                  toast.error(err instanceof Error ? err.message : "Erro ao baixar documento.");
+                }
+              }}
+            >
+              <Download className="mr-2 size-4" aria-hidden={true} />
+              Baixar PDF
             </Button>
           </CardContent>
         </Card>

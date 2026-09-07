@@ -12,6 +12,7 @@ import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { suggestedPrompts } from "@/lib/mock-data";
 import { sendQuestion, type ChatMessage, type Source } from "@/lib/chat";
+import { downloadDocument } from "@/lib/api";
 
 function uuid() {
   if (typeof crypto !== "undefined" && typeof crypto.randomUUID === "function") {
@@ -193,7 +194,8 @@ function AbisPage() {
               variant="ghost"
               size="icon"
               aria-label="Anexar arquivo"
-              onClick={() => toast.info("Anexos disponíveis em uma próxima etapa.")}
+              disabled
+              title="Upload de arquivos em desenvolvimento"
             >
               <Paperclip />
             </Button>
@@ -330,17 +332,39 @@ function MessageBubble({ message }: { message: ChatMessage }) {
 
         {!isUser && message.documentRunId && (
           <div className="mt-2 flex flex-wrap gap-2">
-            <Button asChild size="sm" variant="secondary">
-              <a href={message.documentDocxUrl} download>
-                <Download className="mr-2 size-4" aria-hidden="true" />
-                Baixar DOCX
-              </a>
+            <Button
+              size="sm"
+              variant="secondary"
+              onClick={async () => {
+                try {
+                  await downloadDocument(
+                    `/api/documents/${message.documentRunId}/docx`,
+                    `ABIS-documento-${message.documentRunId}.docx`,
+                  );
+                } catch (err) {
+                  toast.error(err instanceof Error ? err.message : "Erro ao baixar documento.");
+                }
+              }}
+            >
+              <Download className="mr-2 size-4" aria-hidden={true} />
+              Baixar DOCX
             </Button>
-            <Button asChild size="sm" variant="secondary">
-              <a href={message.documentPdfUrl} download>
-                <Download className="mr-2 size-4" aria-hidden="true" />
-                Baixar PDF
-              </a>
+            <Button
+              size="sm"
+              variant="secondary"
+              onClick={async () => {
+                try {
+                  await downloadDocument(
+                    `/api/documents/${message.documentRunId}/pdf`,
+                    `ABIS-documento-${message.documentRunId}.pdf`,
+                  );
+                } catch (err) {
+                  toast.error(err instanceof Error ? err.message : "Erro ao baixar documento.");
+                }
+              }}
+            >
+              <Download className="mr-2 size-4" aria-hidden={true} />
+              Baixar PDF
             </Button>
           </div>
         )}

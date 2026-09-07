@@ -676,6 +676,7 @@ func (s *WorkflowService) evaluateRules(data map[string]string, procedure string
 }
 
 // GenerateDocument generates DOCX and PDF from the template.
+// Uses the shared GenerateDocumentFromTemplate to avoid code duplication.
 func (s *WorkflowService) GenerateDocument(ctx context.Context, taskID string) (*models.DocumentRun, error) {
 	fmt.Printf("[WORKFLOW] GenerateDocument taskID=%s\n", taskID)
 	task, err := s.repo.GetTask(ctx, taskID)
@@ -699,13 +700,6 @@ func (s *WorkflowService) GenerateDocument(ctx context.Context, taskID string) (
 		return nil, ErrTemplateNotFound
 	}
 
-	template, err := s.repo.GetTemplate(ctx, task.TemplateID)
-	if err != nil {
-		fmt.Printf("[WORKFLOW] GenerateDocument erro get template: %v\n", err)
-		return nil, ErrTemplateNotFound
-	}
-	fmt.Printf("[WORKFLOW] GenerateDocument template encontrado templateID=%s name=%s\n", template.ID, template.Name)
-
 	taskData, err := s.repo.GetData(ctx, taskID)
 	if err != nil {
 		fmt.Printf("[WORKFLOW] GenerateDocument erro get data: %v\n", err)
@@ -714,7 +708,7 @@ func (s *WorkflowService) GenerateDocument(ctx context.Context, taskID string) (
 	fmt.Printf("[WORKFLOW] GenerateDocument data encontrada: %d campos\n", len(taskData))
 
 	// Validate template
-	fields, err := s.repo.GetTemplateFields(ctx, template.ID)
+	fields, err := s.repo.GetTemplateFields(ctx, task.TemplateID)
 	if err != nil {
 		fmt.Printf("[WORKFLOW] GenerateDocument erro get template fields: %v\n", err)
 		return nil, fmt.Errorf("get template fields: %w", err)
@@ -736,95 +730,21 @@ func (s *WorkflowService) GenerateDocument(ctx context.Context, taskID string) (
 	requirements, _ := s.repo.GetRequirements(ctx, taskID)
 	fmt.Printf("[WORKFLOW] GenerateDocument requirements para source tracking: %d\n", len(requirements))
 
-	// Generate the document
-	runID := "run-" + uuid.NewString()
-	run := models.DocumentRun{
-		ID:              runID,
-		TaskID:          taskID,
-		EmployeeID:      task.EmployeeID,
-		TemplateID:      template.ID,
-		TemplateVersion: template.Version,
-		Status:          models.RunStatusGenerating,
-	}
-
-	if err := s.repo.CreateDocumentRun(ctx, run); err != nil {
-		fmt.Printf("[WORKFLOW] GenerateDocument erro create run: %v\n", err)
-		return nil, fmt.Errorf("create document run: %w", err)
-	}
-	fmt.Printf("[WORKFLOW] GenerateDocument run criado runID=%s\n", runID)
-
-	// Generate DOCX
-	raw, err := document.ReadTextTemplate(template.TemplatePath)
+	// Use shared generation logic
+	run, err := s.GenerateDocumentFromTemplate(ctx, taskID, task.TemplateID, task.EmployeeID, taskData, requirements)
 	if err != nil {
-		fmt.Printf("[WORKFLOW] GenerateDocument erro read template: %v\n", err)
-		return nil, fmt.Errorf("read template: %w", err)
-	}
-	filled := document.ApplyPlaceholders(raw, taskData)
-
-	outputDir := filepath.Join("data", "documents", runID)
-	if err := os.MkdirAll(outputDir, 0o755); err != nil {
-		fmt.Printf("[WORKFLOW] GenerateDocument erro mkdir: %v\n", err)
-		return nil, fmt.Errorf("create output dir: %w", err)
-	}
-
-	docxBytes, err := document.GenerateDOCX(template.Name, filled)
-	if err != nil {
-		fmt.Printf("[WORKFLOW] GenerateDocument erro generate docx: %v\n", err)
-		slog.Error("docx generation failed", "error", err.Error())
-		s.repo.UpdateDocumentRunStatus(ctx, runID, models.RunStatusRejected, "", "")
-		return nil, fmt.Errorf("generate docx: %w", err)
-	}
-
-	docxPath := filepath.Join(outputDir, "document.docx")
-	if err := os.WriteFile(docxPath, docxBytes, 0o644); err != nil {
-		fmt.Printf("[WORKFLOW] GenerateDocument erro write docx: %v\n", err)
-		return nil, fmt.Errorf("write docx: %w", err)
-	}
-	fmt.Printf("[WORKFLOW] GenerateDocument docx gerado path=%s size=%d\n", docxPath, len(docxBytes))
-
-	// Generate PDF from the same filled content
-	pdfBytes, err := document.GeneratePDF(template.Name, filled)
-	if err != nil {
-		fmt.Printf("[WORKFLOW] GenerateDocument erro generate pdf: %v\n", err)
-		slog.Error("pdf generation failed", "error", err.Error())
-		s.repo.UpdateDocumentRunStatus(ctx, runID, models.RunStatusRejected, docxPath, "")
-		return nil, fmt.Errorf("generate pdf: %w", err)
-	}
-
-	pdfPath := strings.TrimSuffix(docxPath, ".docx") + ".pdf"
-	if err := os.WriteFile(pdfPath, pdfBytes, 0o644); err != nil {
-		fmt.Printf("[WORKFLOW] GenerateDocument erro write pdf: %v\n", err)
-		return nil, fmt.Errorf("write pdf: %w", err)
-	}
-	fmt.Printf("[WORKFLOW] GenerateDocument pdf gerado path=%s size=%d\n", pdfPath, len(pdfBytes))
-
-	// Record sources
-	for _, req := range requirements {
-		ds := models.DocumentSource{
-			ID:                "ds-" + uuid.NewString(),
-			DocumentRunID:     runID,
-			NormativeDocument: req.SourceDocument,
-			NormativeSnippet:  req.SourceSnippet,
-			Requirement:       req.Name,
-		}
-		if req.SourceChunkID != nil {
-			ds.NormativeChunkID = req.SourceChunkID
-		}
-		s.repo.CreateDocumentSource(ctx, ds)
-	}
-	fmt.Printf("[WORKFLOW] GenerateDocument fontes registradas: %d\n", len(requirements))
-
-	// Update run status
-	if err := s.repo.UpdateDocumentRunStatus(ctx, runID, models.RunStatusPending, docxPath, pdfPath); err != nil {
-		fmt.Printf("[WORKFLOW] GenerateDocument erro update run status: %v\n", err)
-		return nil, fmt.Errorf("update run status: %w", err)
+		fmt.Printf("[WORKFLOW] GenerateDocument erro generate: %v\n", err)
+		return nil, err
 	}
 
 	// Update task status
-	s.repo.UpdateTaskStatus(ctx, taskID, models.StatusGenerated, task.TemplateID)
-	fmt.Printf("[WORKFLOW] GenerateDocument sucesso runID=%s\n", runID)
+	if err := s.repo.UpdateTaskStatus(ctx, taskID, models.StatusGenerated, task.TemplateID); err != nil {
+		fmt.Printf("[WORKFLOW] GenerateDocument erro update task status: %v\n", err)
+		return nil, fmt.Errorf("update task status: %w", err)
+	}
+	fmt.Printf("[WORKFLOW] GenerateDocument sucesso runID=%s\n", run.ID)
 
-	return &run, nil
+	return run, nil
 }
 
 // GetDocumentsByEmployee returns all document runs for an employee.
@@ -858,6 +778,11 @@ func (s *WorkflowService) GetDocumentSources(ctx context.Context, runID string) 
 	return s.repo.GetDocumentSources(ctx, runID)
 }
 
+// GetDocumentRun returns the full DocumentRun by ID.
+func (s *WorkflowService) GetDocumentRun(ctx context.Context, runID string) (models.DocumentRun, error) {
+	return s.repo.GetDocumentRun(ctx, runID)
+}
+
 // GetDocumentRunPath returns the local file path for a document run.
 func (s *WorkflowService) GetDocumentRunPath(ctx context.Context, runID string) (string, error) {
 	run, err := s.repo.GetDocumentRun(ctx, runID)
@@ -888,9 +813,90 @@ func (s *WorkflowService) ListTemplates(ctx context.Context) ([]models.DocumentT
 	return s.repo.ListTemplates(ctx)
 }
 
+// HandleDocumentRequest is the unified document generation pipeline.
+// It creates a task, classifies intent, searches norms, extracts requirements,
+// selects a compatible template, checks for missing fields, and either
+// generates the document or reports what is missing.
+//
+// This is the single entry point used by both the chat endpoint and the
+// workflow task endpoint. It never picks an arbitrary template and never
+// invents default values for missing fields.
+func (s *WorkflowService) HandleDocumentRequest(ctx context.Context, employeeID, question string) (*DocumentRequestResult, error) {
+	fmt.Printf("[WORKFLOW] HandleDocumentRequest employeeID=%s question=%s\n", employeeID, question)
+
+	// 1. Create task and classify intent
+	taskID, err := s.CreateTask(ctx, employeeID, question)
+	if err != nil {
+		return nil, fmt.Errorf("create task: %w", err)
+	}
+
+	// 2. Start processing: search norms, extract requirements, select template
+	procResult, err := s.StartProcessing(ctx, taskID)
+	if err != nil {
+		return nil, fmt.Errorf("start processing: %w", err)
+	}
+
+	resp := &DocumentRequestResult{
+		TaskID: taskID,
+	}
+
+	if procResult.Blocked || procResult.Template == nil {
+		resp.Status = string(models.StatusBlocked)
+		resp.Blocked = true
+		resp.Message = "Não foi possível identificar um template aplicável. Consulte os normativos ou entre em contato com a área responsável."
+		return resp, nil
+	}
+
+	resp.Template = procResult.Template
+	resp.Requirements = procResult.Requirements
+
+	// 3. Check for missing required fields
+	missing, err := s.GetMissingFields(ctx, taskID)
+	if err != nil {
+		return nil, fmt.Errorf("get missing fields: %w", err)
+	}
+
+	if len(missing) > 0 {
+		resp.Status = string(models.StatusCollectingData)
+		resp.MissingFields = missing
+		resp.Message = fmt.Sprintf("Para gerar o documento, são necessárias as seguintes informações: %s", formatMissingFieldNames(missing))
+		return resp, nil
+	}
+
+	// 4. All required fields present — generate the document
+	run, err := s.GenerateDocument(ctx, taskID)
+	if err != nil {
+		return nil, fmt.Errorf("generate document: %w", err)
+	}
+
+	resp.Status = string(run.Status)
+	resp.DocumentRun = run
+	resp.DocxURL = "/api/documents/" + run.ID + "/docx"
+	resp.PdfURL = "/api/documents/" + run.ID + "/pdf"
+	resp.Message = "Documento gerado com sucesso"
+
+	return resp, nil
+}
+
+// DocumentRequestResult is the result of handling a document request.
+type DocumentRequestResult struct {
+	TaskID        string
+	Status        string
+	Message       string
+	Blocked       bool
+	MissingFields []MissingField
+	DocumentRun   *models.DocumentRun
+	DocxURL       string
+	PdfURL        string
+	Requirements  []models.WorkflowRequirement
+	Template      *models.DocumentTemplate
+}
+
 // GenerateDocumentFromTemplate generates a document from a template with provided data.
-func (s *WorkflowService) GenerateDocumentFromTemplate(ctx context.Context, templateID, employeeID string, data map[string]string) (*models.DocumentRun, error) {
-	fmt.Printf("[WORKFLOW] GenerateDocumentFromTemplate templateID=%s employeeID=%s\n", templateID, employeeID)
+// This is the shared generation logic used by both the chat and workflow paths.
+// It validates that output files exist and have non-zero size before reporting success.
+func (s *WorkflowService) GenerateDocumentFromTemplate(ctx context.Context, taskID, templateID, employeeID string, data map[string]string, requirements []models.WorkflowRequirement) (*models.DocumentRun, error) {
+	fmt.Printf("[WORKFLOW] GenerateDocumentFromTemplate taskID=%s templateID=%s employeeID=%s\n", taskID, templateID, employeeID)
 
 	template, err := s.repo.GetTemplate(ctx, templateID)
 	if err != nil {
@@ -935,13 +941,31 @@ func (s *WorkflowService) GenerateDocumentFromTemplate(ctx context.Context, temp
 		return nil, fmt.Errorf("write pdf: %w", err)
 	}
 
+	// Validate files exist and have non-zero size
+	docxInfo, err := os.Stat(docxPath)
+	if err != nil {
+		return nil, fmt.Errorf("docx file not found: %w", err)
+	}
+	if docxInfo.Size() == 0 {
+		return nil, fmt.Errorf("docx file is empty")
+	}
+
+	pdfInfo, err := os.Stat(pdfPath)
+	if err != nil {
+		return nil, fmt.Errorf("pdf file not found: %w", err)
+	}
+	if pdfInfo.Size() == 0 {
+		return nil, fmt.Errorf("pdf file is empty")
+	}
+
 	// Create document run
 	run := &models.DocumentRun{
 		ID:              runID,
+		TaskID:          taskID,
 		EmployeeID:      employeeID,
 		TemplateID:      template.ID,
 		TemplateVersion: template.Version,
-		Status:          models.RunStatusGenerated,
+		Status:          models.RunStatusPending,
 		DocxPath:        docxPath,
 		PdfPath:         pdfPath,
 	}
@@ -949,6 +973,22 @@ func (s *WorkflowService) GenerateDocumentFromTemplate(ctx context.Context, temp
 	if err := s.repo.CreateDocumentRun(ctx, *run); err != nil {
 		return nil, fmt.Errorf("create document run: %w", err)
 	}
+
+	// Record sources
+	for _, req := range requirements {
+		ds := models.DocumentSource{
+			ID:                "ds-" + uuid.NewString(),
+			DocumentRunID:     runID,
+			NormativeDocument: req.SourceDocument,
+			NormativeSnippet:  req.SourceSnippet,
+			Requirement:       req.Name,
+		}
+		if req.SourceChunkID != nil {
+			ds.NormativeChunkID = req.SourceChunkID
+		}
+		s.repo.CreateDocumentSource(ctx, ds)
+	}
+	fmt.Printf("[WORKFLOW] GenerateDocumentFromTemplate fontes registradas: %d\n", len(requirements))
 
 	fmt.Printf("[WORKFLOW] GenerateDocumentFromTemplate sucesso runID=%s\n", runID)
 	return run, nil

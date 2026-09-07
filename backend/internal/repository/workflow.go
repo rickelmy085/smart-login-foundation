@@ -254,6 +254,43 @@ func (r *WorkflowRepo) GetTemplateFields(ctx context.Context, templateID string)
 	return result, rows.Err()
 }
 
+// GetCompatibleTemplates returns all active templates that match the given
+// procedure/intent. Matching considers document_type and name similarity.
+// Returns an empty slice if no templates match — the caller must handle this
+// case and never fall back to an arbitrary template.
+func (r *WorkflowRepo) GetCompatibleTemplates(ctx context.Context, procedure string) ([]models.DocumentTemplate, error) {
+	fmt.Printf("[REPO] GetCompatibleTemplates procedure=%s\n", procedure)
+	rows, err := r.db.QueryContext(ctx, `
+		SELECT id, name, description, document_type, version, active, template_path, created_at, updated_at
+		FROM document_templates
+		WHERE active = 1
+		  AND (document_type LIKE ? OR name LIKE ? OR description LIKE ?)
+		ORDER BY name
+	`, "%"+procedure+"%", "%"+procedure+"%", "%"+procedure+"%")
+	if err != nil {
+		fmt.Printf("[REPO] GetCompatibleTemplates erro: %v\n", err)
+		return nil, err
+	}
+	defer rows.Close()
+
+	var result []models.DocumentTemplate
+	for rows.Next() {
+		var tmpl models.DocumentTemplate
+		var active int
+		if err := rows.Scan(
+			&tmpl.ID, &tmpl.Name, &tmpl.Description, &tmpl.DocumentType,
+			&tmpl.Version, &active, &tmpl.TemplatePath, &tmpl.CreatedAt, &tmpl.UpdatedAt,
+		); err != nil {
+			fmt.Printf("[REPO] GetCompatibleTemplates erro scan: %v\n", err)
+			return nil, err
+		}
+		tmpl.Active = active == 1
+		result = append(result, tmpl)
+	}
+	fmt.Printf("[REPO] GetCompatibleTemplates sucesso procedure=%s count=%d\n", procedure, len(result))
+	return result, rows.Err()
+}
+
 // ListTemplates returns all document templates.
 func (r *WorkflowRepo) ListTemplates(ctx context.Context) ([]models.DocumentTemplate, error) {
 	fmt.Printf("[REPO] ListTemplates\n")

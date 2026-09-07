@@ -3,12 +3,9 @@
 package handler
 
 import (
-	"context"
 	"encoding/json"
 	"fmt"
 	"net/http"
-	"regexp"
-	"strconv"
 	"strings"
 	"time"
 
@@ -73,6 +70,10 @@ type GenerateDocumentResponse struct {
 
 // Chat (POST /api/chat) recebe a pergunta, executa o pipeline RAG
 // (busca FTS5 + prompt + Groq) e devolve a resposta.
+//
+// Se a pergunta for um pedido de documento, inicia o workflow completo
+// (classificação → normativos → requisitos → template compatível → geração).
+// O chat NUNCA escolhe templates arbitrariamente nem inventa valores default.
 //
 // Protegido pelo middleware de auth (rota exige JWT válido).
 func (h *ChatHandler) Chat(w http.ResponseWriter, r *http.Request) {
@@ -139,22 +140,24 @@ func (h *ChatHandler) Chat(w http.ResponseWriter, r *http.Request) {
 		Sources: make([]SourceDTO, 0, len(resp.Sources)),
 	}
 
-	// Se o usuário pediu um documento, gera automaticamente usando dados reais
+	// Se o usuário pediu um documento, inicia o workflow completo.
+	// O chat não gera o documento diretamente — ele delega para o workflow,
+	// que é o único caminho de geração documental.
 	if isDocumentRequest(body.Question) && h.workflow != nil && employeeID != "" {
-		fmt.Println("[CHAT] Detectado pedido de documento, gerando...")
-		templates, err := h.workflow.ListTemplates(r.Context())
-		if err == nil && len(templates) > 0 {
-			template := templates[0]
-			taskData := buildTaskDataFromEmployeeAndQuestion(r.Context(), employeeID, body.Question, h.employeeRepo)
-			result, err := h.workflow.GenerateDocumentFromTemplate(r.Context(), template.ID, employeeID, taskData)
-			if err == nil {
-				out.DocumentRunID = result.ID
-				out.DocumentDocxURL = "/api/documents/" + result.ID + "/docx"
-				out.DocumentPdfURL = "/api/documents/" + result.ID + "/pdf"
-				out.Answer += "\n\n---\n📄 Documento gerado: [" + template.Name + "](" + out.DocumentDocxURL + ")"
-			} else {
-				fmt.Printf("[CHAT] Erro ao gerar documento: %v\n", err)
-			}
+		fmt.Println("[CHAT] Detectado pedido de documento, iniciando workflow...")
+		result, err := h.workflow.HandleDocumentRequest(r.Context(), employeeID, body.Question)
+		if err != nil {
+			fmt.Printf("[CHAT] Erro no workflow de documento: %v\n", err)
+			out.Answer += "\n\nOcorreu um erro ao processar o pedido de documento."
+		} else if result.Blocked {
+			out.Answer += "\n\n" + result.Message
+		} else if result.DocumentRun != nil {
+			out.DocumentRunID = result.DocumentRun.ID
+			out.DocumentDocxURL = result.DocxURL
+			out.DocumentPdfURL = result.PdfURL
+			out.Answer += "\n\n---\n📄 Documento gerado: [" + result.Template.Name + "](" + out.DocumentDocxURL + ")"
+		} else if len(result.MissingFields) > 0 {
+			out.Answer += "\n\n" + result.Message
 		}
 	}
 
@@ -173,110 +176,10 @@ func (h *ChatHandler) Chat(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, out)
 }
 
-// buildTaskDataFromEmployeeAndQuestion extrai dados do funcionário e da pergunta
-// para preencher automaticamente os campos do template de documento.
-func buildTaskDataFromEmployeeAndQuestion(ctx context.Context, employeeID, question string, empRepo *repository.EmployeeRepo) map[string]string {
-	taskData := map[string]string{
-		"area_solicitante":   "Área de Crédito",
-		"fornecedor":         "N/A",
-		"valor":              "R$ 10.000,00",
-		"justificativa":      question,
-		"categoria_produto":  "Crédito",
-		"aprovacao_cade":     "Pendente",
-		"observacoes":        "Documento gerado via chat ABIS",
-		"data_solicitacao":   time.Now().Format("02/01/2006"),
-		"numero_solicitacao": "SJ-" + uuid.NewString()[:8],
-	}
-
-	// Busca dados reais do funcionário
-	if empRepo != nil {
-		if emp, err := empRepo.FindByID(ctx, employeeID); err == nil {
-			taskData["solicitante"] = emp.Name
-			taskData["area_solicitante"] = emp.Role
-		} else {
-			fmt.Printf("[CHAT] Erro buscando employee para documento: %v\n", err)
-			taskData["solicitante"] = "Colaborador " + employeeID
-		}
-	} else {
-		taskData["solicitante"] = "Colaborador " + employeeID
-	}
-
-	// Extrai valor (ex: "10 mil reais", "R$ 50.000", "R$ 100000,00")
-	taskData["valor"] = extractValor(question)
-
-	// Extrai categoria a partir de palavras-chave
-	taskData["categoria_produto"] = extractCategoria(question)
-
-	return taskData
-}
-
-// extractValor busca um valor monetário na pergunta.
-func extractValor(question string) string {
-	// Tenta formato "R$ 10.000,00" ou "R$ 10.000" ou "R$ 10000,00"
-	re := regexp.MustCompile(`(?:R\$\s*)?([\d.]+)(?:,(\d{1,2}))?`)
-	matches := re.FindStringSubmatch(question)
-	if len(matches) >= 2 {
-		intPart := strings.ReplaceAll(matches[1], ".", "")
-		intPart = strings.ReplaceAll(intPart, ",", "")
-		if v, err := strconv.ParseFloat(intPart, 64); err == nil {
-			if v >= 1000 {
-				return fmt.Sprintf("R$ %s", formatCurrencyBR(v))
-			}
-		}
-	}
-
-	// Tenta formato "10 mil" → 10000
-	reMil := regexp.MustCompile(`(?i)(\d+)\s*mil`)
-	milMatch := reMil.FindStringSubmatch(question)
-	if milMatch != nil {
-		if v, err := strconv.ParseFloat(milMatch[1], 64); err == nil {
-			return fmt.Sprintf("R$ %s", formatCurrencyBR(v * 1000))
-		}
-	}
-
-	return "R$ 10.000,00"
-}
-
-// formatCurrencyBR formata um float como moeda brasileira: 10000 → "10.000,00"
-func formatCurrencyBR(v float64) string {
-	formatted := strconv.FormatFloat(v, 'f', 2, 64)
-	parts := strings.Split(formatted, ".")
-	intPart := parts[0]
-	varDec := "00"
-	if len(parts) > 1 {
-		varDec = parts[1]
-	}
-	var b strings.Builder
-	for i, c := range intPart {
-		if i > 0 && (len(intPart)-i)%3 == 0 {
-			b.WriteString(".")
-		}
-		b.WriteRune(c)
-	}
-	result := b.String()
-	if len(varDec) < 2 {
-		varDec = varDec + "0"
-	}
-	return result + "," + varDec
-}
-
-// extractCategoria identifica a categoria do produto a partir de palavras-chave.
-func extractCategoria(question string) string {
-	q := strings.ToLower(question)
-	if strings.Contains(q, "empréstimo") || strings.Contains(q, "emprestimo") || strings.Contains(q, "crédito") || strings.Contains(q, "credito") {
-		return "Crédito"
-	}
-	if strings.Contains(q, "seguro") {
-		return "Seguros"
-	}
-	if strings.Contains(q, "investimento") || strings.Contains(q, "aplicação") || strings.Contains(q, "aplicacao") {
-		return "Investimentos"
-	}
-	if strings.Contains(q, "cartão") || strings.Contains(q, "cartao") {
-		return "Cartões"
-	}
-	return "Crédito"
-}
+// buildTaskDataFromEmployeeAndQuestion was removed — the chat handler no longer
+// invents values. Data collection now happens through the workflow pipeline
+// (ProcessMessage / SetData), which only stores values the user explicitly provided.
+// The unified HandleDocumentRequest method handles the full flow.
 
 func isDocumentRequest(question string) bool {
 	q := strings.ToLower(question)
@@ -288,8 +191,9 @@ func isDocumentRequest(question string) bool {
 		strings.Contains(q, "solicitacao")
 }
 
-// GenerateDocument (POST /api/chat/generate-document) recebe um pedido de documento,
-// busca o template mais adequado via RAG e gera um DOCX/PDF.
+// GenerateDocument (POST /api/chat/generate-document) inicia o fluxo de geração
+// de documento via workflow. O chat NUNCA escolhe templates arbitrariamente
+// nem inventa valores default — a geração passa integralmente pelo workflow.
 func (h *ChatHandler) GenerateDocument(w http.ResponseWriter, r *http.Request) {
 	fmt.Println("[CHAT] GenerateDocument handler iniciado")
 	var body GenerateDocumentRequest
@@ -306,38 +210,40 @@ func (h *ChatHandler) GenerateDocument(w http.ResponseWriter, r *http.Request) {
 	}
 
 	employeeID, _ := r.Context().Value("employee_id").(string)
-
-	// Buscar template mais adequado via RAG
-	templates, err := h.workflow.ListTemplates(r.Context())
-	if err != nil {
-		fmt.Printf("[CHAT] GenerateDocument erro list templates: %v\n", err)
-		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "failed to list templates"})
-		return
-	}
-	if len(templates) == 0 {
-		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "no templates available"})
+	if employeeID == "" {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "employee not authenticated"})
 		return
 	}
 
-	// Usar o primeiro template disponível (em produção, classificaria a intenção)
-	template := templates[0]
-	fmt.Printf("[CHAT] GenerateDocument usando template: %s\n", template.Name)
-
-	// Extrair dados reais do funcionário e da pergunta
-	taskData := buildTaskDataFromEmployeeAndQuestion(r.Context(), employeeID, body.Question, h.employeeRepo)
-
-	// Gerar documento usando o workflow service
-	result, err := h.workflow.GenerateDocumentFromTemplate(r.Context(), template.ID, employeeID, taskData)
+	// Inicia o workflow completo de geração de documento.
+	// O chat é apenas um ponto de entrada — a lógica real vive no workflow.
+	result, err := h.workflow.HandleDocumentRequest(r.Context(), employeeID, body.Question)
 	if err != nil {
-		fmt.Printf("[CHAT] GenerateDocument erro generate: %v\n", err)
+		fmt.Printf("[CHAT] GenerateDocument erro workflow: %v\n", err)
 		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": err.Error()})
 		return
 	}
 
+	if result.Blocked {
+		writeJSON(w, http.StatusBadRequest, map[string]any{
+			"message": result.Message,
+			"blocked": true,
+		})
+		return
+	}
+
+	if result.DocumentRun == nil {
+		writeJSON(w, http.StatusBadRequest, map[string]any{
+			"message":       result.Message,
+			"missingFields": result.MissingFields,
+		})
+		return
+	}
+
 	writeJSON(w, http.StatusOK, GenerateDocumentResponse{
-		DocumentRunID: result.ID,
-		DocxURL:       "/api/documents/" + result.ID + "/docx",
-		PdfURL:        "/api/documents/" + result.ID + "/pdf",
-		Message:       "Documento gerado com sucesso",
+		DocumentRunID: result.DocumentRun.ID,
+		DocxURL:       result.DocxURL,
+		PdfURL:        result.PdfURL,
+		Message:       result.Message,
 	})
 }

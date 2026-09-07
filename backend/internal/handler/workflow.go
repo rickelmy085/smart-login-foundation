@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"net/http"
 	"os"
+	"path/filepath"
 	"strings"
 
 	"github.com/bsmart/abis/internal/models"
@@ -14,12 +15,13 @@ import (
 
 // WorkflowHandler exposes task/workflow endpoints.
 type WorkflowHandler struct {
-	svc  *service.WorkflowService
-	repo *repository.WorkflowRepo
+	svc          *service.WorkflowService
+	repo         *repository.WorkflowRepo
+	documentsDir string
 }
 
 func NewWorkflowHandler(s *service.WorkflowService, repo *repository.WorkflowRepo) *WorkflowHandler {
-	return &WorkflowHandler{svc: s, repo: repo}
+	return &WorkflowHandler{svc: s, repo: repo, documentsDir: "data/documents"}
 }
 
 // Request bodies
@@ -485,64 +487,104 @@ func (h *WorkflowHandler) GetDocumentSources(w http.ResponseWriter, r *http.Requ
 // GET /api/documents/{id}/docx
 func (h *WorkflowHandler) DownloadDocx(w http.ResponseWriter, r *http.Request) {
 	runID := r.PathValue("id")
-	fmt.Printf("[WORKFLOW] DownloadDocx runID=%s\n", runID)
 	if runID == "" {
-		fmt.Println("[WORKFLOW] DownloadDocx runID vazio")
 		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "document id is required"})
 		return
 	}
 
-	path, err := h.svc.GetDocumentRunPath(r.Context(), runID)
+	employeeID, ok := r.Context().Value("employee_id").(string)
+	if !ok || employeeID == "" {
+		writeJSON(w, http.StatusUnauthorized, map[string]string{"error": "unauthorized"})
+		return
+	}
+
+	run, err := h.svc.GetDocumentRun(r.Context(), runID)
 	if err != nil {
-		fmt.Printf("[WORKFLOW] DownloadDocx erro: %v\n", err)
 		writeJSON(w, http.StatusNotFound, map[string]string{"error": "document not found"})
 		return
 	}
 
-	data, err := os.ReadFile(path)
+	if run.EmployeeID != employeeID {
+		writeJSON(w, http.StatusNotFound, map[string]string{"error": "document not found"})
+		return
+	}
+
+	data, err := validateAndReadFile(run.DocxPath, h.documentsDir)
 	if err != nil {
-		fmt.Printf("[WORKFLOW] DownloadDocx erro read file: %v\n", err)
 		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "failed to read document"})
 		return
 	}
 
 	w.Header().Set("Content-Type", "application/vnd.openxmlformats-officedocument.wordprocessingml.document")
-	w.Header().Set("Content-Disposition", fmt.Sprintf("attachment; filename=\"%s.docx\"", path))
+	w.Header().Set("Content-Disposition", fmt.Sprintf(`attachment; filename="ABIS-documento-%s.docx"`, runID))
 	w.WriteHeader(http.StatusOK)
 	_, _ = w.Write(data)
-	fmt.Printf("[WORKFLOW] DownloadDocx sucesso runID=%s size=%d\n", runID, len(data))
 }
 
 // GET /api/documents/{id}/pdf
 func (h *WorkflowHandler) DownloadPdf(w http.ResponseWriter, r *http.Request) {
 	runID := r.PathValue("id")
-	fmt.Printf("[WORKFLOW] DownloadPdf runID=%s\n", runID)
 	if runID == "" {
-		fmt.Println("[WORKFLOW] DownloadPdf runID vazio")
 		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "document id is required"})
 		return
 	}
 
-	path, err := h.svc.GetDocumentRunPath(r.Context(), runID)
+	employeeID, ok := r.Context().Value("employee_id").(string)
+	if !ok || employeeID == "" {
+		writeJSON(w, http.StatusUnauthorized, map[string]string{"error": "unauthorized"})
+		return
+	}
+
+	run, err := h.svc.GetDocumentRun(r.Context(), runID)
 	if err != nil {
-		fmt.Printf("[WORKFLOW] DownloadPdf erro: %v\n", err)
 		writeJSON(w, http.StatusNotFound, map[string]string{"error": "document not found"})
 		return
 	}
 
-	pdfPath := strings.TrimSuffix(path, ".docx") + ".pdf"
-	data, err := os.ReadFile(pdfPath)
+	if run.EmployeeID != employeeID {
+		writeJSON(w, http.StatusNotFound, map[string]string{"error": "document not found"})
+		return
+	}
+
+	var pdfPath string
+	if run.PdfPath != "" {
+		pdfPath = run.PdfPath
+	} else {
+		docxPath := run.DocxPath
+		pdfPath = strings.TrimSuffix(docxPath, ".docx") + ".pdf"
+	}
+
+	data, err := validateAndReadFile(pdfPath, h.documentsDir)
 	if err != nil {
-		fmt.Printf("[WORKFLOW] DownloadPdf erro read file: %v\n", err)
 		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "failed to read pdf"})
 		return
 	}
 
 	w.Header().Set("Content-Type", "application/pdf")
-	w.Header().Set("Content-Disposition", fmt.Sprintf("attachment; filename=\"%s.pdf\"", pdfPath))
+	w.Header().Set("Content-Disposition", fmt.Sprintf(`attachment; filename="ABIS-documento-%s.pdf"`, runID))
 	w.WriteHeader(http.StatusOK)
 	_, _ = w.Write(data)
-	fmt.Printf("[WORKFLOW] DownloadPdf sucesso runID=%s size=%d\n", runID, len(data))
+}
+
+func validateAndReadFile(path, baseDir string) ([]byte, error) {
+	cleanPath := filepath.Clean(path)
+	if strings.Contains(cleanPath, "..") {
+		return nil, fmt.Errorf("invalid path: path traversal detected")
+	}
+	absPath, err := filepath.Abs(cleanPath)
+	if err != nil {
+		return nil, err
+	}
+	absPath = filepath.Clean(absPath)
+	absBase, err := filepath.Abs(baseDir)
+	if err != nil {
+		return nil, err
+	}
+	absBase = filepath.Clean(absBase)
+	if !strings.HasPrefix(absPath, absBase+string(filepath.Separator)) && absPath != absBase {
+		return nil, fmt.Errorf("path outside allowed directory")
+	}
+	return os.ReadFile(absPath)
 }
 
 func buildTaskResponse(task *service.TaskDetail) TaskResponse {

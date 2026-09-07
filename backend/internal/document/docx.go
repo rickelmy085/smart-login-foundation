@@ -16,6 +16,7 @@ func GenerateDOCX(title, body string) ([]byte, error) {
 		"_rels/.rels":                  relsXML(),
 		"word/document.xml":            documentXML(title, body),
 		"word/_rels/document.xml.rels": documentRelsXML(),
+		"word/styles.xml":              stylesXML(),
 	}
 	for name, data := range files {
 		w, err := zw.Create(name)
@@ -38,6 +39,7 @@ func contentTypesXML() string {
 		"  <Default Extension=\"rels\" ContentType=\"application/vnd.openxmlformats-package.relationships+xml\"/>\n" +
 		"  <Default Extension=\"xml\" ContentType=\"application/xml\"/>\n" +
 		"  <Override PartName=\"/word/document.xml\" ContentType=\"application/vnd.openxmlformats-officedocument.wordprocessingml.document.main+xml\"/>\n" +
+		"  <Override PartName=\"/word/styles.xml\" ContentType=\"application/vnd.openxmlformats-officedocument.wordprocessingml.styles+xml\"/>\n" +
 		"</Types>"
 }
 
@@ -53,6 +55,31 @@ func documentRelsXML() string {
 		"<Relationships xmlns=\"http://schemas.openxmlformats.org/package/2006/relationships\">\n" +
 		"  <Relationship Id=\"rId1\" Type=\"http://schemas.openxmlformats.org/officeDocument/2006/relationships/styles\" Target=\"styles.xml\"/>\n" +
 		"</Relationships>"
+}
+
+func stylesXML() string {
+	return "<?xml version=\"1.0\" encoding=\"UTF-8\" standalone=\"yes\"?>\n" +
+		"<w:styles xmlns:w=\"http://schemas.openxmlformats.org/wordprocessingml/2006/main\">\n" +
+		"  <w:docDefaults>\n" +
+		"    <w:rPrDefault>\n" +
+		"      <w:rPr>\n" +
+		"        <w:rFonts w:ascii=\"Arial\" w:hAnsi=\"Arial\"/>\n" +
+		"        <w:sz w:val=\"22\"/>\n" +
+		"      </w:rPr>\n" +
+		"    </w:rPrDefault>\n" +
+		"  </w:docDefaults>\n" +
+		"  <w:style w:type=\"paragraph\" w:styleId=\"Title\">\n" +
+		"    <w:name w:val=\"Title\"/>\n" +
+		"    <w:basedOn w:styleId=\"Normal\"/>\n" +
+		"    <w:rPr>\n" +
+		"      <w:b/>\n" +
+		"      <w:sz w:val=\"32\"/>\n" +
+		"    </w:rPr>\n" +
+		"  </w:style>\n" +
+		"  <w:style w:type=\"paragraph\" w:styleId=\"Normal\">\n" +
+		"    <w:name w:val=\"Normal\"/>\n" +
+		"  </w:style>\n" +
+		"</w:styles>"
 }
 
 func documentXML(title, body string) string {
