@@ -1,0 +1,20 @@
+{
+  "template_key": "memorando_interno",
+  "template_version": "1.0",
+  "document_type": "memorando",
+  "name": "Memorando Interno",
+  "required_fields": [
+    "data",
+    "destinatario",
+    "remetente",
+    "departamento",
+    "assunto",
+    "objetivo",
+    "conteudo"
+  ],
+  "optional_fields": [
+    "numero_documento",
+    "observacoes"
+  ],
+  "formats": ["docx", "pdf"]
+}

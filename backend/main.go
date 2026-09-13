@@ -13,9 +13,11 @@ import (
 	"github.com/bsmart/abis/internal/chat"
 	"github.com/bsmart/abis/internal/config"
 	"github.com/bsmart/abis/internal/database"
+	"github.com/bsmart/abis/internal/documentengine"
 	"github.com/bsmart/abis/internal/groq"
 	"github.com/bsmart/abis/internal/handler"
 	"github.com/bsmart/abis/internal/knowledge"
+	"github.com/bsmart/abis/internal/metrics"
 	"github.com/bsmart/abis/internal/middleware"
 	"github.com/bsmart/abis/internal/repository"
 	"github.com/bsmart/abis/internal/service"
@@ -30,7 +32,7 @@ func main() {
 	}
 
 	cfg := config.Load()
-	fmt.Printf("[MAIN] Config carregada: porta=%s db=%s frontend=%s\n", cfg.Port, cfg.DatabasePath, cfg.FrontendURL)
+	fmt.Printf("[MAIN] Config carregada: porta=%s db=%s frontend_urls=%v\n", cfg.Port, cfg.DatabasePath, cfg.FrontendURLs)
 
 	db, err := database.Connect(cfg.DatabasePath)
 	if err != nil {
@@ -71,7 +73,22 @@ func main() {
 	chatService := chat.NewService(searcher, groqClient, webClient)
 	workflowService := service.NewWorkflowService(workflowRepo, searcher, groqClient)
 
-	authHandler := handler.NewAuthHandler(authService)
+	// Configure Document Engine if enabled
+	if cfg.DocumentEngineEnabled {
+		docEngineClient := documentengine.NewClient(
+			cfg.DocumentEngineURL,
+			cfg.DocumentEngineSecret,
+			time.Duration(cfg.DocumentEngineTimeout)*time.Second,
+		)
+		workflowService.WithDocumentEngine(docEngineClient, true, cfg.DocumentEngineFallback)
+		workflowService.WithEmployeeRepo(employeeRepo)
+		fmt.Printf("[MAIN] Document Engine habilitado: url=%s timeout=%ds fallback=%v\n",
+			cfg.DocumentEngineURL, cfg.DocumentEngineTimeout, cfg.DocumentEngineFallback)
+	} else {
+		fmt.Println("[MAIN] Document Engine desabilitado usando gerador Go")
+	}
+
+	authHandler := handler.NewAuthHandler(authService, sessionRepo)
 	chatHandler := handler.NewChatHandler(chatService, workflowService, employeeRepo, chatRepo)
 	knowledgeHandler := handler.NewKnowledgeHandler(searcher)
 	workflowHandler := handler.NewWorkflowHandler(workflowService, workflowRepo)
@@ -80,13 +97,27 @@ func main() {
 	mux.HandleFunc("/api/health", func(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusOK, map[string]string{"status": "ok"})
 	})
+
+	// Metrics endpoint
+	mux.HandleFunc("/api/metrics", func(w http.ResponseWriter, r *http.Request) {
+		snapshot := metrics.GlobalMetrics.Snapshot()
+		writeJSON(w, http.StatusOK, snapshot)
+	})
+
 	mux.HandleFunc("/api/login", authHandler.Login)
 	mux.HandleFunc("/api/logout", authHandler.Logout)
 	mux.Handle("/api/me", middleware.AuthMiddleware(authService)(http.HandlerFunc(authHandler.Me)))
 	mux.Handle("/api/chat", middleware.AuthMiddleware(authService)(http.HandlerFunc(chatHandler.Chat)))
 	mux.Handle("/api/chat/generate-document", middleware.AuthMiddleware(authService)(http.HandlerFunc(chatHandler.GenerateDocument)))
 	mux.Handle("/api/search", middleware.AuthMiddleware(authService)(http.HandlerFunc(knowledgeHandler.Search)))
-	mux.Handle("/api/tasks", middleware.AuthMiddleware(authService)(http.HandlerFunc(workflowHandler.ListTasks)))
+	// /api/tasks dispatches by HTTP method: POST creates, GET lists
+	mux.HandleFunc("/api/tasks", func(w http.ResponseWriter, r *http.Request) {
+		if r.Method == http.MethodPost {
+			middleware.AuthMiddleware(authService)(http.HandlerFunc(workflowHandler.CreateTask)).ServeHTTP(w, r)
+		} else {
+			middleware.AuthMiddleware(authService)(http.HandlerFunc(workflowHandler.ListTasks)).ServeHTTP(w, r)
+		}
+	})
 	mux.Handle("/api/tasks/{id}", middleware.AuthMiddleware(authService)(http.HandlerFunc(workflowHandler.GetTask)))
 	mux.Handle("/api/tasks/{id}/process", middleware.AuthMiddleware(authService)(http.HandlerFunc(workflowHandler.ProcessTask)))
 	mux.Handle("/api/tasks/{id}/message", middleware.AuthMiddleware(authService)(http.HandlerFunc(workflowHandler.ProcessMessage)))
@@ -105,9 +136,11 @@ func main() {
 	fmt.Printf("[MAIN] Iniciando servidor HTTP em %s\n", addr)
 	slog.Info("server started", "addr", addr)
 	if err := http.ListenAndServe(addr,
-		corsMiddleware(cfg.FrontendURL)(
-			loggingMiddleware(
-				middleware.WithJWTSecret(cfg.JWTSecret)(mux),
+		corsMiddleware(cfg.FrontendURLs)(
+			metrics.RequestIDMiddleware(
+				metrics.LoggingMiddleware(
+					middleware.WithJWTSecret(cfg.JWTSecret)(mux),
+				),
 			),
 		),
 	); err != nil {
@@ -116,23 +149,35 @@ func main() {
 	}
 }
 
-func corsMiddleware(allowedOrigin string) func(http.Handler) http.Handler {
+func corsMiddleware(allowedOrigins []string) func(http.Handler) http.Handler {
+	allowed := make(map[string]bool)
+	for _, o := range allowedOrigins {
+		allowed[o] = true
+	}
+
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			origin := r.Header.Get("Origin")
-			fmt.Printf("[CORS] Request %s %s origin=%s\n", r.Method, r.URL.Path, origin)
+			slog.Debug("CORS request", "method", r.Method, "path", r.URL.Path, "origin", origin)
 
-			if origin == "" {
-				origin = allowedOrigin
+			// Check if origin is allowed
+			allowedOrigin := ""
+			if origin != "" && allowed[origin] {
+				allowedOrigin = origin
 			}
 
-			w.Header().Set("Access-Control-Allow-Origin", origin)
-			w.Header().Set("Access-Control-Allow-Methods", "POST, GET, OPTIONS")
-			w.Header().Set("Access-Control-Allow-Headers", "Content-Type, Authorization")
-			w.Header().Set("Access-Control-Allow-Credentials", "true")
+			if allowedOrigin == "" {
+				// No allowed origin, don't set CORS headers (will block cross-origin requests)
+				slog.Warn("CORS origin not allowed", "origin", origin, "path", r.URL.Path)
+			} else {
+				w.Header().Set("Access-Control-Allow-Origin", allowedOrigin)
+				w.Header().Set("Access-Control-Allow-Methods", "POST, GET, OPTIONS")
+				w.Header().Set("Access-Control-Allow-Headers", "Content-Type, Authorization")
+				w.Header().Set("Access-Control-Allow-Credentials", "true")
+			}
 
 			if r.Method == "OPTIONS" {
-				fmt.Println("[CORS] Preflight OPTIONS respondido com 200")
+				slog.Debug("CORS preflight OPTIONS")
 				w.WriteHeader(http.StatusOK)
 				return
 			}

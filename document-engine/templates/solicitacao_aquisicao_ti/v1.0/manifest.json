@@ -1,0 +1,21 @@
+{
+  "template_key": "solicitacao_aquisicao_ti",
+  "template_version": "1.0",
+  "document_type": "solicitacao_aquisicao_ti",
+  "name": "Solicitação de Aquisição de TI",
+  "required_fields": [
+    "data_solicitacao",
+    "solicitante",
+    "area_solicitante",
+    "fornecedor",
+    "valor",
+    "justificativa",
+    "categoria_produto"
+  ],
+  "optional_fields": [
+    "numero_solicitacao",
+    "aprovacao_cade",
+    "observacoes"
+  ],
+  "formats": ["docx", "pdf"]
+}

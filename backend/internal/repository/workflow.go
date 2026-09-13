@@ -21,10 +21,14 @@ func NewWorkflowRepo(db *sql.DB) *WorkflowRepo {
 // CreateTask inserts a new workflow task.
 func (r *WorkflowRepo) CreateTask(ctx context.Context, t models.WorkflowTask) error {
 	fmt.Printf("[REPO] CreateTask taskID=%s employeeID=%s intent=%s\n", t.ID, t.EmployeeID, t.Intent)
+	var templateID any
+	if t.TemplateID != "" {
+		templateID = t.TemplateID
+	}
 	_, err := r.db.ExecContext(ctx, `
-		INSERT INTO workflow_tasks (id, employee_id, intent, procedure, status, original_request, template_id)
-		VALUES (?, ?, ?, ?, ?, ?, ?)
-	`, t.ID, t.EmployeeID, t.Intent, t.Procedure, t.Status, t.OriginalRequest, t.TemplateID)
+		INSERT INTO workflow_tasks (id, employee_id, intent, procedure, status, original_request, template_id, template_key)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+	`, t.ID, t.EmployeeID, t.Intent, t.Procedure, t.Status, t.OriginalRequest, templateID, t.TemplateKey)
 	if err != nil {
 		fmt.Printf("[REPO] CreateTask erro: %v\n", err)
 		return err
@@ -37,18 +41,22 @@ func (r *WorkflowRepo) CreateTask(ctx context.Context, t models.WorkflowTask) er
 func (r *WorkflowRepo) GetTask(ctx context.Context, id string) (models.WorkflowTask, error) {
 	fmt.Printf("[REPO] GetTask taskID=%s\n", id)
 	var t models.WorkflowTask
+	var templateID sql.NullString
 	err := r.db.QueryRowContext(ctx, `
-		SELECT id, employee_id, intent, procedure, status, original_request, template_id, created_at, updated_at
+		SELECT id, employee_id, intent, procedure, status, original_request, template_id, COALESCE(template_key, ''), created_at, updated_at
 		FROM workflow_tasks WHERE id = ?
 	`, id).Scan(
 		&t.ID, &t.EmployeeID, &t.Intent, &t.Procedure, &t.Status,
-		&t.OriginalRequest, &t.TemplateID, &t.CreatedAt, &t.UpdatedAt,
+		&t.OriginalRequest, &templateID, &t.TemplateKey, &t.CreatedAt, &t.UpdatedAt,
 	)
 	if err != nil {
 		fmt.Printf("[REPO] GetTask erro: %v\n", err)
 		return t, err
 	}
-	fmt.Printf("[REPO] GetTask sucesso taskID=%s status=%s\n", id, t.Status)
+	if templateID.Valid {
+		t.TemplateID = templateID.String
+	}
+	fmt.Printf("[REPO] GetTask sucesso taskID=%s status=%s templateKey=%s\n", id, t.Status, t.TemplateKey)
 	return t, nil
 }
 
@@ -79,6 +87,20 @@ func (r *WorkflowRepo) UpdateTaskTemplate(ctx context.Context, id, templateID st
 		return err
 	}
 	fmt.Printf("[REPO] UpdateTaskTemplate sucesso taskID=%s\n", id)
+	return nil
+}
+
+// UpdateTaskTemplateKey updates the template_key on a task.
+func (r *WorkflowRepo) UpdateTaskTemplateKey(ctx context.Context, id, templateKey string) error {
+	fmt.Printf("[REPO] UpdateTaskTemplateKey taskID=%s templateKey=%s\n", id, templateKey)
+	_, err := r.db.ExecContext(ctx, `
+		UPDATE workflow_tasks SET template_key = ?, updated_at = datetime('now')
+		WHERE id = ?
+	`, templateKey, id)
+	if err != nil {
+		fmt.Printf("[REPO] UpdateTaskTemplateKey erro: %v\n", err)
+		return err
+	}
 	return nil
 }
 
@@ -181,10 +203,10 @@ func (r *WorkflowRepo) GetTemplate(ctx context.Context, id string) (models.Docum
 	var t models.DocumentTemplate
 	var active int
 	err := r.db.QueryRowContext(ctx, `
-		SELECT id, name, description, document_type, version, active, template_path, created_at, updated_at
+		SELECT id, name, description, document_type, COALESCE(template_key, ''), version, active, template_path, created_at, updated_at
 		FROM document_templates WHERE id = ?
 	`, id).Scan(
-		&t.ID, &t.Name, &t.Description, &t.DocumentType, &t.Version,
+		&t.ID, &t.Name, &t.Description, &t.DocumentType, &t.TemplateKey, &t.Version,
 		&active, &t.TemplatePath, &t.CreatedAt, &t.UpdatedAt,
 	)
 	t.Active = active == 1
@@ -192,20 +214,26 @@ func (r *WorkflowRepo) GetTemplate(ctx context.Context, id string) (models.Docum
 		fmt.Printf("[REPO] GetTemplate erro: %v\n", err)
 		return t, err
 	}
-	fmt.Printf("[REPO] GetTemplate sucesso templateID=%s name=%s\n", id, t.Name)
+	fmt.Printf("[REPO] GetTemplate sucesso templateID=%s name=%s key=%s\n", id, t.Name, t.TemplateKey)
 	return t, nil
 }
 
-// GetTemplateByKey retrieves a template by a key (matched against name).
+// GetTemplateByKey retrieves a template by exact template_key match.
+// Only returns active templates. If multiple versions exist, returns the active one
+// (currently assumes single version per key; deterministic behavior).
+// Returns sql.ErrNoRows if not found.
 func (r *WorkflowRepo) GetTemplateByKey(ctx context.Context, key string) (models.DocumentTemplate, error) {
-	fmt.Printf("[REPO] GetTemplateByKey key=%s\n", key)
+	fmt.Printf("[REPO] GetTemplateByKey key=%s (exact match)\n", key)
 	var t models.DocumentTemplate
 	var active int
 	err := r.db.QueryRowContext(ctx, `
-		SELECT id, name, description, document_type, version, active, template_path, created_at, updated_at
-		FROM document_templates WHERE name LIKE ? AND active = 1 LIMIT 1
-	`, "%"+key+"%").Scan(
-		&t.ID, &t.Name, &t.Description, &t.DocumentType, &t.Version,
+		SELECT id, name, description, document_type, COALESCE(template_key, ''), version, active, template_path, created_at, updated_at
+		FROM document_templates
+		WHERE template_key = ? AND active = 1
+		ORDER BY version DESC
+		LIMIT 1
+	`, key).Scan(
+		&t.ID, &t.Name, &t.Description, &t.DocumentType, &t.TemplateKey, &t.Version,
 		&active, &t.TemplatePath, &t.CreatedAt, &t.UpdatedAt,
 	)
 	t.Active = active == 1
@@ -213,8 +241,54 @@ func (r *WorkflowRepo) GetTemplateByKey(ctx context.Context, key string) (models
 		fmt.Printf("[REPO] GetTemplateByKey erro: %v\n", err)
 		return t, err
 	}
-	fmt.Printf("[REPO] GetTemplateByKey sucesso templateID=%s name=%s\n", t.ID, t.Name)
+	fmt.Printf("[REPO] GetTemplateByKey sucesso templateID=%s key=%s version=%s\n", t.ID, t.TemplateKey, t.Version)
 	return t, nil
+}
+
+// GetTemplateByKeyAndVersion retrieves a specific version of a template.
+// Returns sql.ErrNoRows if not found.
+func (r *WorkflowRepo) GetTemplateByKeyAndVersion(ctx context.Context, key, version string) (models.DocumentTemplate, error) {
+	fmt.Printf("[REPO] GetTemplateByKeyAndVersion key=%s version=%s\n", key, version)
+	var t models.DocumentTemplate
+	var active int
+	err := r.db.QueryRowContext(ctx, `
+		SELECT id, name, description, document_type, COALESCE(template_key, ''), version, active, template_path, created_at, updated_at
+		FROM document_templates
+		WHERE template_key = ? AND version = ?
+	`, key, version).Scan(
+		&t.ID, &t.Name, &t.Description, &t.DocumentType, &t.TemplateKey, &t.Version,
+		&active, &t.TemplatePath, &t.CreatedAt, &t.UpdatedAt,
+	)
+	t.Active = active == 1
+	if err != nil {
+		fmt.Printf("[REPO] GetTemplateByKeyAndVersion erro: %v\n", err)
+		return t, err
+	}
+	return t, nil
+}
+
+// ListTemplateKeys returns the list of active template_key values registered.
+// Used as a whitelist for validating LLM-classified template keys.
+func (r *WorkflowRepo) ListTemplateKeys(ctx context.Context) ([]string, error) {
+	rows, err := r.db.QueryContext(ctx, `
+		SELECT DISTINCT template_key FROM document_templates
+		WHERE active = 1 AND template_key != ''
+		ORDER BY template_key
+	`)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var keys []string
+	for rows.Next() {
+		var k string
+		if err := rows.Scan(&k); err != nil {
+			return nil, err
+		}
+		keys = append(keys, k)
+	}
+	return keys, rows.Err()
 }
 
 // GetTemplateFields returns all fields for a template.
@@ -234,20 +308,26 @@ func (r *WorkflowRepo) GetTemplateFields(ctx context.Context, templateID string)
 	for rows.Next() {
 		var f models.TemplateField
 		var chunkID sql.NullInt64
-		var required, activeInt int
+		var validationRule, normativeDoc sql.NullString
+		var required int
 		if err := rows.Scan(
 			&f.ID, &f.TemplateID, &f.FieldName, &f.Label, &f.Type,
-			&required, &f.ValidationRule, &f.SourceRequirement, &f.NormativeDocument,
+			&required, &validationRule, &f.SourceRequirement, &normativeDoc,
 			&chunkID, &f.CreatedAt,
 		); err != nil {
 			fmt.Printf("[REPO] GetTemplateFields erro scan: %v\n", err)
 			return nil, err
 		}
 		f.Required = required == 1
+		if validationRule.Valid {
+			f.ValidationRule = validationRule.String
+		}
+		if normativeDoc.Valid {
+			f.NormativeDocument = normativeDoc.String
+		}
 		if chunkID.Valid {
 			f.NormativeChunkID = &chunkID.Int64
 		}
-		_ = activeInt
 		result = append(result, f)
 	}
 	fmt.Printf("[REPO] GetTemplateFields sucesso templateID=%s count=%d\n", templateID, len(result))
@@ -261,7 +341,7 @@ func (r *WorkflowRepo) GetTemplateFields(ctx context.Context, templateID string)
 func (r *WorkflowRepo) GetCompatibleTemplates(ctx context.Context, procedure string) ([]models.DocumentTemplate, error) {
 	fmt.Printf("[REPO] GetCompatibleTemplates procedure=%s\n", procedure)
 	rows, err := r.db.QueryContext(ctx, `
-		SELECT id, name, description, document_type, version, active, template_path, created_at, updated_at
+		SELECT id, name, description, document_type, COALESCE(template_key, ''), version, active, template_path, created_at, updated_at
 		FROM document_templates
 		WHERE active = 1
 		  AND (document_type LIKE ? OR name LIKE ? OR description LIKE ?)
@@ -279,7 +359,7 @@ func (r *WorkflowRepo) GetCompatibleTemplates(ctx context.Context, procedure str
 		var active int
 		if err := rows.Scan(
 			&tmpl.ID, &tmpl.Name, &tmpl.Description, &tmpl.DocumentType,
-			&tmpl.Version, &active, &tmpl.TemplatePath, &tmpl.CreatedAt, &tmpl.UpdatedAt,
+			&tmpl.TemplateKey, &tmpl.Version, &active, &tmpl.TemplatePath, &tmpl.CreatedAt, &tmpl.UpdatedAt,
 		); err != nil {
 			fmt.Printf("[REPO] GetCompatibleTemplates erro scan: %v\n", err)
 			return nil, err
@@ -295,9 +375,9 @@ func (r *WorkflowRepo) GetCompatibleTemplates(ctx context.Context, procedure str
 func (r *WorkflowRepo) ListTemplates(ctx context.Context) ([]models.DocumentTemplate, error) {
 	fmt.Printf("[REPO] ListTemplates\n")
 	rows, err := r.db.QueryContext(ctx, `
-		SELECT id, name, description, document_type, version, template_path, created_at, updated_at
+		SELECT id, name, description, document_type, COALESCE(template_key, ''), version, template_path, created_at, updated_at
 		FROM document_templates
-		ORDER BY name
+		ORDER BY template_key, version
 	`)
 	if err != nil {
 		fmt.Printf("[REPO] ListTemplates erro: %v\n", err)
@@ -310,7 +390,7 @@ func (r *WorkflowRepo) ListTemplates(ctx context.Context) ([]models.DocumentTemp
 		var tmpl models.DocumentTemplate
 		if err := rows.Scan(
 			&tmpl.ID, &tmpl.Name, &tmpl.Description, &tmpl.DocumentType,
-			&tmpl.Version, &tmpl.TemplatePath, &tmpl.CreatedAt, &tmpl.UpdatedAt,
+			&tmpl.TemplateKey, &tmpl.Version, &tmpl.TemplatePath, &tmpl.CreatedAt, &tmpl.UpdatedAt,
 		); err != nil {
 			fmt.Printf("[REPO] ListTemplates erro scan: %v\n", err)
 			return nil, err
@@ -533,4 +613,61 @@ func (r *WorkflowRepo) GetHistory(ctx context.Context, employeeID string) ([]mod
 // IntToString is a helper for converting.
 func IntToString(i int) string {
 	return strconv.Itoa(i)
+}
+
+// --- Rule Evaluations ---
+
+// CreateRuleEvaluation records a rule evaluation result.
+func (r *WorkflowRepo) CreateRuleEvaluation(ctx context.Context, eval models.RuleEvaluationResult) error {
+	fmt.Printf("[REPO] CreateRuleEvaluation taskID=%s ruleID=%s status=%s\n", eval.RuleID, eval.RuleID, eval.Status)
+	_, err := r.db.ExecContext(ctx, `
+		INSERT INTO workflow_rule_evaluations (id, task_id, rule_id, rule_name, status, message, input_field, input_value, expected_value, actual_value, sources_json)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+	`, eval.RuleID, eval.RuleID, eval.RuleName, eval.Status, eval.Message,
+		eval.Input.FieldName, eval.Input.Value, eval.ExpectedValue, eval.ActualValue,
+		"[]") // sources_json - simplified for now
+	if err != nil {
+		fmt.Printf("[REPO] CreateRuleEvaluation erro: %v\n", err)
+		return err
+	}
+	fmt.Printf("[REPO] CreateRuleEvaluation sucesso ruleID=%s\n", eval.RuleID)
+	return nil
+}
+
+// GetRuleEvaluationsByTask returns all rule evaluations for a task.
+func (r *WorkflowRepo) GetRuleEvaluationsByTask(ctx context.Context, taskID string) ([]models.RuleEvaluationResult, error) {
+	fmt.Printf("[REPO] GetRuleEvaluationsByTask taskID=%s\n", taskID)
+	rows, err := r.db.QueryContext(ctx, `
+		SELECT id, task_id, rule_id, rule_name, status, message, input_field, input_value, expected_value, actual_value, sources_json, evaluated_at
+		FROM workflow_rule_evaluations WHERE task_id = ? ORDER BY evaluated_at
+	`, taskID)
+	if err != nil {
+		fmt.Printf("[REPO] GetRuleEvaluationsByTask erro: %v\n", err)
+		return nil, err
+	}
+	defer rows.Close()
+
+	var result []models.RuleEvaluationResult
+	for rows.Next() {
+		var eval models.RuleEvaluationResult
+		var ruleID, taskID, ruleName, status, message, inputField, inputValue, expectedValue, actualValue, sourcesJSON, evaluatedAt string
+		err := rows.Scan(&ruleID, &taskID, &ruleName, &status, &message, &inputField, &inputValue, &expectedValue, &actualValue, &sourcesJSON, &evaluatedAt)
+		if err != nil {
+			fmt.Printf("[REPO] GetRuleEvaluationsByTask erro scan: %v\n", err)
+			return nil, err
+		}
+		eval.RuleID = ruleID
+		eval.RuleName = ruleName
+		eval.Status = models.RuleStatus(status)
+		eval.Message = message
+		eval.Input.FieldName = inputField
+		eval.Input.Value = inputValue
+		eval.ExpectedValue = expectedValue
+		eval.ActualValue = actualValue
+		eval.EvaluatedAt = evaluatedAt
+		// Sources would need JSON parsing - simplified for now
+		result = append(result, eval)
+	}
+	fmt.Printf("[REPO] GetRuleEvaluationsByTask sucesso taskID=%s count=%d\n", taskID, len(result))
+	return result, rows.Err()
 }

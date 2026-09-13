@@ -95,6 +95,21 @@ func MigrateWorkflow(ctx context.Context, db *sql.DB) error {
 			created_at TEXT NOT NULL DEFAULT (datetime('now'))
 		);`,
 
+		`CREATE TABLE IF NOT EXISTS workflow_rule_evaluations (
+			id TEXT PRIMARY KEY,
+			task_id TEXT NOT NULL REFERENCES workflow_tasks(id) ON DELETE CASCADE,
+			rule_id TEXT NOT NULL,
+			rule_name TEXT NOT NULL,
+			status TEXT NOT NULL,
+			message TEXT,
+			input_field TEXT,
+			input_value TEXT,
+			expected_value TEXT,
+			actual_value TEXT,
+			sources_json TEXT,
+			evaluated_at TEXT NOT NULL DEFAULT (datetime('now'))
+		);`,
+
 		`CREATE INDEX IF NOT EXISTS idx_workflow_tasks_employee ON workflow_tasks(employee_id);`,
 		`CREATE INDEX IF NOT EXISTS idx_workflow_tasks_status ON workflow_tasks(status);`,
 		`CREATE INDEX IF NOT EXISTS idx_workflow_data_task ON workflow_data(task_id);`,
@@ -153,6 +168,96 @@ func MigrateWorkflow(ctx context.Context, db *sql.DB) error {
 		`CREATE INDEX IF NOT EXISTS idx_chat_messages_employee ON chat_messages(employee_id);`,
 		`CREATE INDEX IF NOT EXISTS idx_chat_messages_created ON chat_messages(created_at);`,
 	}...)
+
+	// Phase 3: Add template_key columns for deterministic template selection
+	// Check if template_key column exists in document_templates
+	var hasTemplateKey bool
+	err := db.QueryRowContext(ctx, `
+		SELECT COUNT(*) > 0 FROM pragma_table_info('document_templates') 
+		WHERE name = 'template_key'
+	`).Scan(&hasTemplateKey)
+	if err != nil {
+		fmt.Printf("[DB] MigrateWorkflow erro checking template_key column: %v\n", err)
+		return err
+	}
+	if !hasTemplateKey {
+		fmt.Println("[DB] MigrateWorkflow adicionando coluna template_key em document_templates")
+		if _, err := db.ExecContext(ctx, `
+			ALTER TABLE document_templates ADD COLUMN template_key TEXT NOT NULL DEFAULT ''
+		`); err != nil {
+			fmt.Printf("[DB] MigrateWorkflow erro adding template_key: %v\n", err)
+			return err
+		}
+		// Backfill existing templates: use document_type as template_key
+		if _, err := db.ExecContext(ctx, `
+			UPDATE document_templates SET template_key = document_type WHERE template_key = ''
+		`); err != nil {
+			fmt.Printf("[DB] MigrateWorkflow erro backfilling template_key: %v\n", err)
+			return err
+		}
+		// Create unique index on template_key + version
+		if _, err := db.ExecContext(ctx, `
+			CREATE UNIQUE INDEX IF NOT EXISTS idx_document_templates_key_version 
+			ON document_templates(template_key, version)
+		`); err != nil {
+			fmt.Printf("[DB] MigrateWorkflow erro creating index: %v\n", err)
+			return err
+		}
+	}
+
+	// Check if template_key column exists in workflow_tasks
+	var hasTaskTemplateKey bool
+	err = db.QueryRowContext(ctx, `
+		SELECT COUNT(*) > 0 FROM pragma_table_info('workflow_tasks') 
+		WHERE name = 'template_key'
+	`).Scan(&hasTaskTemplateKey)
+	if err != nil {
+		fmt.Printf("[DB] MigrateWorkflow erro checking workflow_tasks template_key: %v\n", err)
+		return err
+	}
+	if !hasTaskTemplateKey {
+		fmt.Println("[DB] MigrateWorkflow adicionando coluna template_key em workflow_tasks")
+		if _, err := db.ExecContext(ctx, `
+			ALTER TABLE workflow_tasks ADD COLUMN template_key TEXT NOT NULL DEFAULT ''
+		`); err != nil {
+			fmt.Printf("[DB] MigrateWorkflow erro adding template_key to workflow_tasks: %v\n", err)
+			return err
+		}
+	}
+
+	// Add UNIQUE constraint on workflow_data(task_id, field_name) if not exists
+	var hasUniqueIdx bool
+	err = db.QueryRowContext(ctx, `
+		SELECT COUNT(*) > 0 FROM sqlite_master 
+		WHERE type = 'index' AND name = 'idx_workflow_data_task_field_unique'
+	`).Scan(&hasUniqueIdx)
+	if err != nil {
+		fmt.Printf("[DB] MigrateWorkflow erro checking unique index: %v\n", err)
+		return err
+	}
+	if !hasUniqueIdx {
+		fmt.Println("[DB] MigrateWorkflow adicionando UNIQUE constraint em workflow_data(task_id, field_name)")
+		// SQLite doesn't support ADD CONSTRAINT, so we need to recreate the table
+		// First, check for duplicates and remove them (keep latest)
+		if _, err := db.ExecContext(ctx, `
+			DELETE FROM workflow_data 
+			WHERE id NOT IN (
+				SELECT MAX(id) FROM workflow_data 
+				GROUP BY task_id, field_name
+			)
+		`); err != nil {
+			fmt.Printf("[DB] MigrateWorkflow erro removing duplicates: %v\n", err)
+			return err
+		}
+		// Create unique index
+		if _, err := db.ExecContext(ctx, `
+			CREATE UNIQUE INDEX idx_workflow_data_task_field_unique 
+			ON workflow_data(task_id, field_name)
+		`); err != nil {
+			fmt.Printf("[DB] MigrateWorkflow erro creating unique index: %v\n", err)
+			return err
+		}
+	}
 
 	for i, stmt := range stmts {
 		fmt.Printf("[DB] MigrateWorkflow executando stmt %d/%d\n", i+1, len(stmts))

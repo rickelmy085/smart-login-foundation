@@ -150,6 +150,7 @@ func (h *WorkflowHandler) GetTask(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	employeeID := r.Context().Value("employee_id").(string)
 	task, err := h.svc.GetTask(r.Context(), taskID)
 	if err != nil {
 		fmt.Printf("[WORKFLOW] GetTask erro: %v\n", err)
@@ -160,6 +161,14 @@ func (h *WorkflowHandler) GetTask(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": err.Error()})
 		return
 	}
+
+	// Ownership check
+	if task.Task.EmployeeID != employeeID {
+		fmt.Printf("[WORKFLOW] GetTask ownership denied: task employee=%s, request employee=%s\n", task.Task.EmployeeID, employeeID)
+		writeJSON(w, http.StatusNotFound, map[string]string{"error": "task not found"})
+		return
+	}
+
 	fmt.Printf("[WORKFLOW] GetTask sucesso taskID=%s status=%s\n", taskID, task.Task.Status)
 
 	resp := buildTaskResponse(task)
@@ -204,6 +213,23 @@ func (h *WorkflowHandler) ProcessTask(w http.ResponseWriter, r *http.Request) {
 	if taskID == "" {
 		fmt.Println("[WORKFLOW] ProcessTask taskID vazio")
 		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "task id is required"})
+		return
+	}
+
+	employeeID := r.Context().Value("employee_id").(string)
+	task, err := h.svc.GetTask(r.Context(), taskID)
+	if err != nil {
+		fmt.Printf("[WORKFLOW] ProcessTask erro get task: %v\n", err)
+		if err == service.ErrTaskNotFound {
+			writeJSON(w, http.StatusNotFound, map[string]string{"error": "task not found"})
+			return
+		}
+		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": err.Error()})
+		return
+	}
+	if task.Task.EmployeeID != employeeID {
+		fmt.Printf("[WORKFLOW] ProcessTask ownership denied: task employee=%s, request employee=%s\n", task.Task.EmployeeID, employeeID)
+		writeJSON(w, http.StatusNotFound, map[string]string{"error": "task not found"})
 		return
 	}
 
@@ -259,6 +285,21 @@ func (h *WorkflowHandler) ProcessMessage(w http.ResponseWriter, r *http.Request)
 		return
 	}
 
+	employeeID := r.Context().Value("employee_id").(string)
+	task, err := h.svc.GetTask(r.Context(), taskID)
+	if err != nil {
+		if err == service.ErrTaskNotFound {
+			writeJSON(w, http.StatusNotFound, map[string]string{"error": "task not found"})
+			return
+		}
+		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": err.Error()})
+		return
+	}
+	if task.Task.EmployeeID != employeeID {
+		writeJSON(w, http.StatusNotFound, map[string]string{"error": "task not found"})
+		return
+	}
+
 	var body ProcessMessageRequest
 	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
 		fmt.Printf("[WORKFLOW] ProcessMessage erro decode JSON: %v\n", err)
@@ -309,6 +350,21 @@ func (h *WorkflowHandler) SetData(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	employeeID := r.Context().Value("employee_id").(string)
+	task, err := h.svc.GetTask(r.Context(), taskID)
+	if err != nil {
+		if err == service.ErrTaskNotFound {
+			writeJSON(w, http.StatusNotFound, map[string]string{"error": "task not found"})
+			return
+		}
+		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": err.Error()})
+		return
+	}
+	if task.Task.EmployeeID != employeeID {
+		writeJSON(w, http.StatusNotFound, map[string]string{"error": "task not found"})
+		return
+	}
+
 	var body SetDataRequest
 	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
 		fmt.Printf("[WORKFLOW] SetData erro decode JSON: %v\n", err)
@@ -341,6 +397,21 @@ func (h *WorkflowHandler) ValidateTask(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	employeeID := r.Context().Value("employee_id").(string)
+	task, err := h.svc.GetTask(r.Context(), taskID)
+	if err != nil {
+		if err == service.ErrTaskNotFound {
+			writeJSON(w, http.StatusNotFound, map[string]string{"error": "task not found"})
+			return
+		}
+		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": err.Error()})
+		return
+	}
+	if task.Task.EmployeeID != employeeID {
+		writeJSON(w, http.StatusNotFound, map[string]string{"error": "task not found"})
+		return
+	}
+
 	result, err := h.svc.ValidateAndProceed(r.Context(), taskID)
 	if err != nil {
 		fmt.Printf("[WORKFLOW] ValidateTask erro: %v\n", err)
@@ -363,6 +434,21 @@ func (h *WorkflowHandler) GenerateDocument(w http.ResponseWriter, r *http.Reques
 	if taskID == "" {
 		fmt.Println("[WORKFLOW] GenerateDocument taskID vazio")
 		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "task id is required"})
+		return
+	}
+
+	employeeID := r.Context().Value("employee_id").(string)
+	task, err := h.svc.GetTask(r.Context(), taskID)
+	if err != nil {
+		if err == service.ErrTaskNotFound {
+			writeJSON(w, http.StatusNotFound, map[string]string{"error": "task not found"})
+			return
+		}
+		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": err.Error()})
+		return
+	}
+	if task.Task.EmployeeID != employeeID {
+		writeJSON(w, http.StatusNotFound, map[string]string{"error": "task not found"})
 		return
 	}
 
@@ -400,6 +486,21 @@ func (h *WorkflowHandler) GetTaskSources(w http.ResponseWriter, r *http.Request)
 	if taskID == "" {
 		fmt.Println("[WORKFLOW] GetTaskSources taskID vazio")
 		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "task id is required"})
+		return
+	}
+
+	employeeID := r.Context().Value("employee_id").(string)
+	task, err := h.svc.GetTask(r.Context(), taskID)
+	if err != nil {
+		if err == service.ErrTaskNotFound {
+			writeJSON(w, http.StatusNotFound, map[string]string{"error": "task not found"})
+			return
+		}
+		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": err.Error()})
+		return
+	}
+	if task.Task.EmployeeID != employeeID {
+		writeJSON(w, http.StatusNotFound, map[string]string{"error": "task not found"})
 		return
 	}
 

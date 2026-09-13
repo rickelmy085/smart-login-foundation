@@ -115,7 +115,7 @@ func (s *AuthService) Login(ctx context.Context, secret []byte, req models.Login
 func (s *AuthService) Me(ctx context.Context, tokenString string, secret []byte) (models.MeResponse, error) {
 	fmt.Println("[AUTH] Me iniciado")
 	// Parse + valida assinatura e expiração do JWT.
-	token, err := parseToken(tokenString, secret)
+	token, err := ParseToken(tokenString, secret)
 	if err != nil {
 		fmt.Printf("[AUTH] Me parseToken falhou: %v\n", err)
 		return models.MeResponse{}, err
@@ -184,9 +184,9 @@ func (s *AuthService) buildToken(secret []byte, emp models.Employee, session mod
 	return tokStr, nil
 }
 
-// parseToken valida o JWT e devolve o token decodificado.
+// ParseToken valida o JWT e devolve o token decodificado.
 // O keyFunc garante que o método de assinatura é HMAC (evita truques tipo "none").
-func parseToken(tokenString string, secret []byte) (*jwt.Token, error) {
+func ParseToken(tokenString string, secret []byte) (*jwt.Token, error) {
 	fmt.Printf("[AUTH] parseToken iniciado length=%d\n", len(tokenString))
 	return jwt.Parse(tokenString, func(t *jwt.Token) (interface{}, error) {
 		if _, ok := t.Method.(*jwt.SigningMethodHMAC); !ok {

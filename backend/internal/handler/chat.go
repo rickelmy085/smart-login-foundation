@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/bsmart/abis/internal/chat"
+	"github.com/bsmart/abis/internal/models"
 	"github.com/bsmart/abis/internal/repository"
 	"github.com/bsmart/abis/internal/service"
 	"github.com/google/uuid"
@@ -104,10 +105,82 @@ func (h *ChatHandler) Chat(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
+	// Classify intent FIRST to determine if we need RAG or direct workflow
+	var classification *models.IntentClassification
+	var classificationErr error
+	if h.workflow != nil && employeeID != "" {
+		classification, classificationErr = h.workflow.ClassifyIntent(r.Context(), body.Question)
+		if classificationErr != nil {
+			fmt.Printf("[CHAT] Erro classificando intenção: %v\n", classificationErr)
+		} else {
+			fmt.Printf("[CHAT] Intenção classificada: %s template_key=%s\n", classification.Intent, classification.TemplateKey)
+		}
+	}
+
+	// Handle capability_query and generic document_generation without RAG
+	if classification != nil {
+		switch classification.Intent {
+		case "capability_query":
+			out := ChatResponse{
+				Answer:  buildCapabilityResponse(),
+				Sources: []SourceDTO{},
+			}
+			writeJSON(w, http.StatusOK, out)
+			return
+
+		case "document_generation":
+			if classification.TemplateKey == "" {
+				out := ChatResponse{
+					Answer:  buildTemplateSelectionResponse(),
+					Sources: []SourceDTO{},
+				}
+				writeJSON(w, http.StatusOK, out)
+				return
+			}
+			// Specific document request - go directly to workflow (skip RAG)
+			fmt.Println("[CHAT] Pedido de documento específico, iniciando workflow direto...")
+			result, err := h.workflow.HandleDocumentRequest(r.Context(), employeeID, body.Question)
+			if err != nil {
+				fmt.Printf("[CHAT] Erro no workflow de documento: %v\n", err)
+				out := ChatResponse{
+					Answer:  "Ocorreu um erro ao processar o pedido de documento.",
+					Sources: []SourceDTO{},
+				}
+				writeJSON(w, http.StatusInternalServerError, out)
+				return
+			}
+
+			out := ChatResponse{
+				Answer:  "",
+				Sources: []SourceDTO{},
+			}
+
+			if result.Blocked {
+				out.Answer = result.Message
+				writeJSON(w, http.StatusBadRequest, out)
+				return
+			}
+
+			if result.DocumentRun != nil {
+				out.Answer = fmt.Sprintf("Documento gerado: [%s](%s)", result.Template.Name, result.DocxURL)
+				out.DocumentRunID = result.DocumentRun.ID
+				out.DocumentDocxURL = result.DocxURL
+				out.DocumentPdfURL = result.PdfURL
+			} else if len(result.MissingFields) > 0 {
+				out.Answer = result.Message
+			} else {
+				out.Answer = result.Message
+			}
+
+			writeJSON(w, http.StatusOK, out)
+			return
+		}
+	}
+
+	// For knowledge_query, procedure_query, and other intents: run normal RAG
 	resp, err := h.svc.Ask(r.Context(), chat.ChatRequest{Question: body.Question, AllowWebSearch: body.AllowWebSearch})
 	if err != nil {
 		fmt.Printf("[CHAT] Erro no service Ask: %v\n", err)
-		// Erros de validação são 400; erros de LLM são 502 (upstream problem).
 		status := http.StatusBadGateway
 		if err == chat.ErrEmptyQuestion {
 			status = http.StatusBadRequest
@@ -115,7 +188,7 @@ func (h *ChatHandler) Chat(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, status, map[string]string{"error": err.Error()})
 		return
 	}
-	fmt.Printf("[CHAT] Resposta gerada com %d fontes\n", len(resp.Sources))
+	fmt.Printf("[CHAT] Resposta RAG gerada com %d fontes\n", len(resp.Sources))
 
 	if h.chatRepo != nil && employeeID != "" {
 		msgID := "msg-" + uuid.NewString()
@@ -138,27 +211,6 @@ func (h *ChatHandler) Chat(w http.ResponseWriter, r *http.Request) {
 	out := ChatResponse{
 		Answer:  resp.Answer,
 		Sources: make([]SourceDTO, 0, len(resp.Sources)),
-	}
-
-	// Se o usuário pediu um documento, inicia o workflow completo.
-	// O chat não gera o documento diretamente — ele delega para o workflow,
-	// que é o único caminho de geração documental.
-	if isDocumentRequest(body.Question) && h.workflow != nil && employeeID != "" {
-		fmt.Println("[CHAT] Detectado pedido de documento, iniciando workflow...")
-		result, err := h.workflow.HandleDocumentRequest(r.Context(), employeeID, body.Question)
-		if err != nil {
-			fmt.Printf("[CHAT] Erro no workflow de documento: %v\n", err)
-			out.Answer += "\n\nOcorreu um erro ao processar o pedido de documento."
-		} else if result.Blocked {
-			out.Answer += "\n\n" + result.Message
-		} else if result.DocumentRun != nil {
-			out.DocumentRunID = result.DocumentRun.ID
-			out.DocumentDocxURL = result.DocxURL
-			out.DocumentPdfURL = result.PdfURL
-			out.Answer += "\n\n---\n📄 Documento gerado: [" + result.Template.Name + "](" + out.DocumentDocxURL + ")"
-		} else if len(result.MissingFields) > 0 {
-			out.Answer += "\n\n" + result.Message
-		}
 	}
 
 	for _, src := range resp.Sources {
@@ -191,6 +243,30 @@ func isDocumentRequest(question string) bool {
 		strings.Contains(q, "solicitacao")
 }
 
+// buildCapabilityResponse returns a response for capability_query intent.
+func buildCapabilityResponse() string {
+	return `**Sim. O ABIS consegue gerar documentos internos a partir dos templates disponíveis no sistema, após coletar as informações necessárias e validar os requisitos aplicáveis.**
+
+**Atualmente estão disponíveis:**
+
+* Solicitação de Aquisição de TI
+* Memorando Interno
+* Relatório Operacional
+
+**Qual documento você deseja criar?**`
+}
+
+// buildTemplateSelectionResponse returns a response for generic document_generation without template.
+func buildTemplateSelectionResponse() string {
+	return `Posso gerar os seguintes documentos disponíveis:
+
+• Solicitação de Aquisição de TI
+• Memorando Interno
+• Relatório Operacional
+
+Qual deles você deseja criar?`
+}
+
 // GenerateDocument (POST /api/chat/generate-document) inicia o fluxo de geração
 // de documento via workflow. O chat NUNCA escolhe templates arbitrariamente
 // nem inventa valores default — a geração passa integralmente pelo workflow.
@@ -213,6 +289,33 @@ func (h *ChatHandler) GenerateDocument(w http.ResponseWriter, r *http.Request) {
 	if employeeID == "" {
 		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "employee not authenticated"})
 		return
+	}
+
+	// Classify intent first
+	if h.workflow != nil {
+		classification, err := h.workflow.ClassifyIntent(r.Context(), body.Question)
+		if err != nil {
+			fmt.Printf("[CHAT] Erro classificando intenção: %v\n", err)
+		} else {
+			fmt.Printf("[CHAT] Intenção classificada: %s template_key=%s\n", classification.Intent, classification.TemplateKey)
+
+			switch classification.Intent {
+			case "capability_query":
+				writeJSON(w, http.StatusOK, GenerateDocumentResponse{
+					Message: buildCapabilityResponse(),
+				})
+				return
+
+			case "document_generation":
+				if classification.TemplateKey == "" {
+					writeJSON(w, http.StatusOK, GenerateDocumentResponse{
+						Message: buildTemplateSelectionResponse(),
+					})
+					return
+				}
+				// Specific document request - proceed with workflow
+			}
+		}
 	}
 
 	// Inicia o workflow completo de geração de documento.

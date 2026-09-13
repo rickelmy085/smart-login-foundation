@@ -54,6 +54,7 @@ const (
 	IntentApprovalCheck       Intent = "approval_check"
 	IntentRequirementCheck    Intent = "requirement_check"
 	IntentWorkflowExecution  Intent = "workflow_execution"
+	IntentCapabilityQuery     Intent = "capability_query"
 )
 
 // WorkflowTask represents a workflow task in the system.
@@ -65,6 +66,7 @@ type WorkflowTask struct {
 	Status        TaskStatus `json:"status" db:"status"`
 	OriginalRequest string    `json:"originalRequest" db:"original_request"`
 	TemplateID    string     `json:"templateId" db:"template_id"`
+	TemplateKey   string     `json:"templateKey" db:"template_key"`
 	CreatedAt     string     `json:"createdAt" db:"created_at"`
 	UpdatedAt     string     `json:"updatedAt" db:"updated_at"`
 }
@@ -94,16 +96,19 @@ type WorkflowData struct {
 }
 
 // DocumentTemplate represents a document template.
+// TemplateKey is the deterministic identifier used to select this template.
+// TemplateKey + Version must be unique.
 type DocumentTemplate struct {
-	ID          string `json:"id" db:"id"`
-	Name        string `json:"name" db:"name"`
-	Description string `json:"description" db:"description"`
+	ID           string `json:"id" db:"id"`
+	Name         string `json:"name" db:"name"`
+	Description  string `json:"description" db:"description"`
 	DocumentType string `json:"documentType" db:"document_type"`
-	Version     string `json:"version" db:"version"`
-	Active      bool   `json:"active" db:"active"`
+	TemplateKey  string `json:"templateKey" db:"template_key"`
+	Version      string `json:"version" db:"version"`
+	Active       bool   `json:"active" db:"active"`
 	TemplatePath string `json:"templatePath" db:"template_path"`
-	CreatedAt   string `json:"createdAt" db:"created_at"`
-	UpdatedAt   string `json:"updatedAt" db:"updated_at"`
+	CreatedAt    string `json:"createdAt" db:"created_at"`
+	UpdatedAt    string `json:"updatedAt" db:"updated_at"`
 }
 
 // TemplateField represents a field in a template.
@@ -169,6 +174,90 @@ type ExtractedRequirement struct {
 	Type           string             `json:"type,omitempty"`
 	SourceDocument string             `json:"source_document"`
 	SourceSnippet  string             `json:"source_snippet"`
+}
+
+// RuleStatus represents the result of evaluating a rule.
+type RuleStatus string
+
+const (
+	RuleStatusPass               RuleStatus = "PASS"
+	RuleStatusFail               RuleStatus = "FAIL"
+	RuleStatusNeedsReview        RuleStatus = "NEEDS_REVIEW"
+	RuleStatusInsufficientEvidence RuleStatus = "INSUFFICIENT_EVIDENCE"
+	RuleStatusNotApplicable      RuleStatus = "NOT_APPLICABLE"
+)
+
+// RuleOperator represents the type of comparison operation.
+type RuleOperator string
+
+const (
+	RuleOperatorEquals            RuleOperator = "equals"
+	RuleOperatorNotEquals         RuleOperator = "not_equals"
+	RuleOperatorGreaterThan       RuleOperator = "greater_than"
+	RuleOperatorGreaterOrEqual    RuleOperator = "greater_or_equal"
+	RuleOperatorLessThan          RuleOperator = "less_than"
+	RuleOperatorLessOrEqual       RuleOperator = "less_or_equal"
+	RuleOperatorContains          RuleOperator = "contains"
+	RuleOperatorNotContains       RuleOperator = "not_contains"
+	RuleOperatorExists            RuleOperator = "exists"
+	RuleOperatorNotExists         RuleOperator = "not_exists"
+	RuleOperatorIn                RuleOperator = "in"
+	RuleOperatorNotIn             RuleOperator = "not_in"
+)
+
+// RuleValueType represents the expected type of a field value.
+type RuleValueType string
+
+const (
+	RuleValueTypeString  RuleValueType = "string"
+	RuleValueTypeNumber  RuleValueType = "number"
+	RuleValueTypeBoolean RuleValueType = "boolean"
+	RuleValueTypeDate    RuleValueType = "date"
+)
+
+// RuleSource represents the normative source backing a rule.
+type RuleSource struct {
+	Document    string  `json:"document,omitempty"`
+	ChunkID     *int64  `json:"chunk_id,omitempty"`
+	Snippet     string  `json:"snippet,omitempty"`
+	Requirement string  `json:"requirement,omitempty"`
+}
+
+// RuleDefinition represents a single deterministic rule.
+type RuleDefinition struct {
+	ID          string       `json:"id"`
+	Name        string       `json:"name"`
+	Description string       `json:"description"`
+	Field       string       `json:"field"`
+	Operator    string       `json:"operator"`
+	Value       string       `json:"value"`
+	ValueType   string       `json:"value_type"`
+	Status      RuleStatus   `json:"status_when_met"`
+	Sources     []RuleSource `json:"sources"`
+	Active      bool         `json:"active"`
+	CreatedAt   string       `json:"created_at"`
+}
+
+// RuleInput represents a field input for rule evaluation.
+type RuleInput struct {
+	FieldName   string `json:"field_name"`
+	Value       string `json:"value"`
+	ValueType   string `json:"value_type"`
+	Required    bool   `json:"required"`
+	Missing     bool   `json:"missing"`
+}
+
+// RuleEvaluationResult represents the result of evaluating a single rule.
+type RuleEvaluationResult struct {
+	RuleID        string       `json:"rule_id"`
+	RuleName      string       `json:"rule_name"`
+	Status        RuleStatus   `json:"status"`
+	Message       string       `json:"message"`
+	Input         RuleInput    `json:"input"`
+	ExpectedValue string       `json:"expected_value,omitempty"`
+	ActualValue   string       `json:"actual_value,omitempty"`
+	Sources       []RuleSource `json:"sources"`
+	EvaluatedAt   string       `json:"evaluated_at"`
 }
 
 // RuleEvaluation represents the result of evaluating a deterministic rule.

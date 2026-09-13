@@ -1,0 +1,23 @@
+{
+  "template_key": "relatorio_operacional",
+  "template_version": "1.0",
+  "document_type": "relatorio",
+  "name": "Relatório Operacional",
+  "required_fields": [
+    "data",
+    "responsavel",
+    "area",
+    "periodo",
+    "objetivo",
+    "resumo_executivo"
+  ],
+  "optional_fields": [
+    "numero_relatorio",
+    "atividades",
+    "resultados",
+    "ocorrencias",
+    "recomendacoes",
+    "observacoes"
+  ],
+  "formats": ["docx", "pdf"]
+}

@@ -1,0 +1,289 @@
+# ABIS Document Engine
+
+Professional document generation service for the **ABIS — Agentic Banking Intelligence System**.
+
+This service receives a structured `DocumentSpec` from the Go backend and renders corporate DOCX/PDF documents using versioned templates.
+
+## Architecture
+
+```
+ABIS / GO (brain)
+    │
+    │  HTTP POST /generate (DocumentSpec JSON)
+    │
+    ▼
+Document Engine / PYTHON (motor)
+    │
+    ├── Template resolution (key + version)
+    ├── Schema validation (Pydantic)
+    ├── Required fields validation
+    ├── DOCX generation (python-docx)
+    ├── PDF generation (LibreOffice headless)
+    └── Output validation
+    │
+    ▼
+DOCX / PDF
+```
+
+**Principle**: Go decides WHAT to generate and WHY. Python decides HOW to render it.
+
+Python does NOT:
+- Consult normatives
+- Classify intent
+- Decide business rules
+- Validate input data (Go already validated)
+- Persist DocumentRun/DocumentSource
+
+## Installation
+
+### Prerequisites
+
+- Python 3.11+
+- LibreOffice (optional, for PDF generation)
+
+### Setup (Linux/macOS)
+
+```bash
+cd document-engine
+python -m venv .venv
+source .venv/bin/activate
+pip install -r requirements.txt
+```
+
+### Setup (Windows)
+
+```powershell
+cd document-engine
+python -m venv .venv
+.venv\Scripts\activate
+pip install -r requirements.txt
+```
+
+## Configuration
+
+Copy `.env.example` to `.env` and adjust values:
+
+```bash
+cp .env.example .env
+```
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `DOCUMENT_ENGINE_HOST` | `127.0.0.1` | Bind host |
+| `DOCUMENT_ENGINE_PORT` | `8090` | Bind port |
+| `DOCUMENT_ENGINE_INTERNAL_SECRET` | `change-me-in-production` | Internal auth secret |
+| `DOCUMENT_ENGINE_OUTPUT_DIR` | `./output` | Output directory |
+| `DOCUMENT_ENGINE_TEMPLATE_DIR` | `./templates` | Templates directory |
+| `DOCUMENT_ENGINE_PDF_ENABLED` | `true` | Enable PDF generation |
+| `DOCUMENT_ENGINE_PDF_TIMEOUT_SECONDS` | `30` | LibreOffice timeout |
+| `DOCUMENT_ENGINE_LOG_LEVEL` | `INFO` | Log level |
+
+## Running
+
+```bash
+uvicorn app.main:app --host 127.0.0.1 --port 8090
+```
+
+Or on Windows:
+
+```powershell
+uvicorn app.main:app --host 127.0.0.1 --port 8090
+```
+
+## API Endpoints
+
+### `GET /health`
+
+No authentication required. Returns service status and loaded templates.
+
+```json
+{
+  "status": "ok",
+  "service": "document-engine",
+  "version": "1.0.0",
+  "templates_loaded": 1,
+  "template_keys": ["solicitacao_aquisicao_ti"]
+}
+```
+
+### `POST /generate`
+
+Requires `X-Internal-Secret` header.
+
+**Request**:
+
+```json
+{
+  "spec_id": "uuid-v4",
+  "run_id": "uuid-v4",
+  "task_id": "uuid-v4",
+  "document_type": "solicitacao_aquisicao_ti",
+  "template_key": "solicitacao_aquisicao_ti",
+  "template_version": "1.0",
+  "title": "Solicitação de Aquisição de TI",
+  "metadata": {
+    "generated_at": "2026-09-12T10:30:00Z",
+    "employee_id": "uuid",
+    "employee_name": "João Silva",
+    "employee_re": "123456",
+    "department": "TI - Infraestrutura"
+  },
+  "fields": {
+    "numero_solicitacao": "SA-2026-0042",
+    "data_solicitacao": "2026-09-12",
+    "solicitante": "João Silva",
+    "area_solicitante": "TI - Infraestrutura",
+    "fornecedor": "Dell Technologies",
+    "valor": "R$ 45.000,00",
+    "justificativa": "Substituição de equipamentos obsoletos",
+    "categoria_produto": "Notebooks",
+    "aprovacao_cade": "Não aplicável",
+    "observacoes": ""
+  },
+  "sections": [],
+  "rules": [],
+  "sources": [],
+  "output": {
+    "formats": ["docx", "pdf"],
+    "filename_prefix": "SA-2026-0042"
+  }
+}
+```
+
+**Response (success)**:
+
+```json
+{
+  "status": "generated",
+  "spec_id": "uuid",
+  "run_id": "uuid",
+  "template_used": {
+    "key": "solicitacao_aquisicao_ti",
+    "version": "1.0",
+    "path": "templates/solicitacao_aquisicao_ti/v1.0/template.docx"
+  },
+  "files": [
+    {
+      "format": "docx",
+      "filename": "SA-2026-0042.docx",
+      "size_bytes": 24576,
+      "sha256": "abc123...",
+      "data_base64": "UEsDBBQ..."
+    }
+  ],
+  "warnings": []
+}
+```
+
+## Template Structure
+
+```
+templates/
+└── solicitacao_aquisicao_ti/
+    └── v1.0/
+        ├── template.docx
+        └── manifest.json
+```
+
+### manifest.json
+
+```json
+{
+  "template_key": "solicitacao_aquisicao_ti",
+  "template_version": "1.0",
+  "document_type": "solicitacao_aquisicao_ti",
+  "name": "Solicitação de Aquisição de TI",
+  "required_fields": [
+    "data_solicitacao",
+    "solicitante",
+    "area_solicitante",
+    "fornecedor",
+    "valor",
+    "justificativa",
+    "categoria_produto"
+  ],
+  "optional_fields": [
+    "numero_solicitacao",
+    "aprovacao_cade",
+    "observacoes"
+  ],
+  "formats": ["docx", "pdf"]
+}
+```
+
+### Adding a New Template Version
+
+1. Create `templates/{key}/v{version}/`
+2. Add `template.docx` with `{{placeholders}}`
+3. Add `manifest.json` with matching key and version
+4. Restart the service (or it will be picked up on next request)
+
+## PDF Generation
+
+PDF is generated by converting DOCX via **LibreOffice headless**:
+
+```
+DOCX → LibreOffice --headless --convert-to pdf → PDF
+```
+
+If LibreOffice is not installed or `DOCUMENT_ENGINE_PDF_ENABLED=false`:
+- DOCX is still generated normally
+- A warning is returned in the response: `PDF_UNAVAILABLE`
+- The service does NOT fail — PDF is optional
+
+## Error Codes
+
+| Code | HTTP | Meaning |
+|------|------|---------|
+| `INVALID_SPEC` | 422 | Schema validation failed |
+| `MISSING_REQUIRED_FIELD` | 400 | Required field missing |
+| `TEMPLATE_NOT_FOUND` | 404 | Template key does not exist |
+| `TEMPLATE_VERSION_NOT_FOUND` | 404 | Version does not exist |
+| `GENERATION_FAILED` | 500 | DOCX generation error |
+| `EMPTY_OUTPUT` | 500 | Generated file is empty |
+| `INVALID_OUTPUT` | 500 | Generated file is invalid |
+| `PDF_GENERATION_FAILED` | warning | PDF conversion failed |
+| `PDF_UNAVAILABLE` | warning | LibreOffice not found |
+| `INTERNAL_ERROR` | 500 | Unexpected error |
+
+## Testing
+
+```bash
+cd document-engine
+pytest -q
+```
+
+### Test Coverage
+
+- **Schemas**: validation, UUID format, template key/version, output config
+- **Templates**: resolution, path traversal, manifest validation, required fields
+- **DOCX**: generation, placeholder substitution, formatting preservation
+- **PDF**: availability check, fallback behavior
+- **Validators**: DOCX/PDF integrity, filename sanitization
+- **Health**: endpoint response, template listing
+- **Generate**: auth, validation, full E2E flow
+
+## Security
+
+- Internal auth via `X-Internal-Secret` header (constant-time comparison)
+- Path traversal protection on template resolution
+- Filename sanitization on output
+- No secrets logged
+- No stack traces exposed in production
+- Output directory validation
+
+## Limitations
+
+- Currently only 1 template: `solicitacao_aquisicao_ti` v1.0
+- PDF requires LibreOffice (not bundled)
+- Base64 response for files (future: streaming/URL)
+- No template hot-reload cache (resolved per request)
+
+## Future Integration (Phase 2)
+
+The Go backend will:
+1. Build a `DocumentSpec` from WorkflowTask + data + requirements
+2. `POST /generate` to this service
+3. Save the returned files to `data/documents/{runID}/`
+4. Persist DocumentRun + DocumentSource
+5. Return download URLs to the frontend

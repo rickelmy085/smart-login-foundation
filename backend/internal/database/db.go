@@ -3,10 +3,10 @@
 package database
 
 import (
-	"database/sql" // interface genérica do Go para bancos SQL
-	"fmt"          // para formatar mensagens de erro com %w (encadeamento)
-	"log/slog"     // logger
-	"os"           // criar diretórios
+	"database/sql"  // interface genérica do Go para bancos SQL
+	"fmt"           // para formatar mensagens de erro com %w (encadeamento)
+	"log/slog"      // logger
+	"os"            // criar diretórios
 	"path/filepath" // manipulação de caminhos de arquivo
 
 	// O "_" (blank import) só registra o driver no pacote database/sql,
@@ -18,11 +18,13 @@ import (
 // Connect abre (ou cria) o arquivo SQLite e devolve um *sql.DB pronto.
 //
 // Parâmetros:
-//   databasePath: caminho do arquivo (ex: "./data/abis.db").
+//
+//	databasePath: caminho do arquivo (ex: "./data/abis.db").
 //
 // Retorno:
-//   *sql.DB: handle da conexão, usado para fazer queries.
-//   error  : qualquer falha de abertura/criação.
+//
+//	*sql.DB: handle da conexão, usado para fazer queries.
+//	error  : qualquer falha de abertura/criação.
 func Connect(databasePath string) (*sql.DB, error) {
 	fmt.Printf("[DB] Connect databasePath=%s\n", databasePath)
 	// Garante que a pasta do arquivo existe (ex: cria "./data/").

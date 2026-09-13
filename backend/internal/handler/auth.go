@@ -10,19 +10,22 @@ import (
 
 	"github.com/bsmart/abis/internal/middleware"
 	"github.com/bsmart/abis/internal/models"
+	"github.com/bsmart/abis/internal/repository"
 	"github.com/bsmart/abis/internal/service"
 	"github.com/go-chi/chi/v5" // roteador chi (atualmente NÃO usado pelo main.go, mas mantido para evoluções)
+	"github.com/golang-jwt/jwt/v5"
 )
 
 // AuthHandler agrupa os endpoints de autenticação.
-// Recebe o AuthService por injeção (dependência).
+// Recebe o AuthService e SessionRepo por injeção (dependência).
 type AuthHandler struct {
-	auth *service.AuthService
+	auth     *service.AuthService
+	sessions *repository.SessionRepo
 }
 
 // Construtor idiomático: New + tipo + ponteiro de retorno.
-func NewAuthHandler(auth *service.AuthService) *AuthHandler {
-	return &AuthHandler{auth: auth}
+func NewAuthHandler(auth *service.AuthService, sessions *repository.SessionRepo) *AuthHandler {
+	return &AuthHandler{auth: auth, sessions: sessions}
 }
 
 // Routes define as rotas via chi. (main.go hoje usa http.ServeMux,
@@ -97,10 +100,55 @@ func (h *AuthHandler) Me(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, res)
 }
 
-// Logout (POST /api/logout) — placeholder. Uma versão completa
-// removeria o registro de sessão do banco via sessionRepo.Delete.
+// Logout (POST /api/logout) invalida a sessão no banco removendo o registro.
+// Exige token válido no header Authorization: Bearer <token>.
 func (h *AuthHandler) Logout(w http.ResponseWriter, r *http.Request) {
 	fmt.Println("[AUTH] Logout chamado")
+	secret := r.Context().Value("jwt_secret").(string)
+	token := bearerToken(r)
+	if token == "" {
+		fmt.Println("[AUTH] Logout token ausente")
+		writeError(w, http.StatusUnauthorized, "missing token")
+		return
+	}
+
+	// Valida o token e obtém a sessão
+	res, err := h.auth.Me(r.Context(), token, []byte(secret))
+	if err != nil {
+		fmt.Printf("[AUTH] Logout token invalido: %v\n", err)
+		writeError(w, http.StatusUnauthorized, "invalid or expired session")
+		return
+	}
+
+	// Extrai o session_id do token
+	tokenObj, err := service.ParseToken(token, []byte(secret))
+	if err != nil {
+		fmt.Printf("[AUTH] Logout parse token falhou: %v\n", err)
+		writeError(w, http.StatusUnauthorized, "invalid token")
+		return
+	}
+
+	claims, ok := tokenObj.Claims.(jwt.MapClaims)
+	if !ok {
+		writeError(w, http.StatusUnauthorized, "invalid token claims")
+		return
+	}
+
+	sessionID, _ := claims["session_id"].(string)
+	if sessionID == "" {
+		fmt.Println("[AUTH] Logout session_id ausente no token")
+		writeError(w, http.StatusBadRequest, "session_id missing in token")
+		return
+	}
+
+	// Deleta a sessão do banco
+	if err := h.sessions.Delete(r.Context(), sessionID); err != nil {
+		fmt.Printf("[AUTH] Logout erro ao deletar sessao: %v\n", err)
+		writeError(w, http.StatusInternalServerError, "failed to logout")
+		return
+	}
+
+	fmt.Printf("[AUTH] Logout sucesso sessionID=%s employeeID=%s\n", sessionID, res.Employee.ID)
 	writeJSON(w, http.StatusOK, map[string]string{"message": "logged out"})
 }
 
