@@ -197,11 +197,11 @@ function AbisPage() {
 
       if (data.status === "awaiting_human" && data.human_question) {
         setPendingHumanQuestion(data.human_question);
-        appendAssistantMessage(data, "awaiting_human");
+        appendAssistantMessage(question, data, "awaiting_human");
         setHumanInputOpen(true);
         setAgentState("awaiting_human");
       } else if (data.status === "completed" || data.status === "failed") {
-        appendAssistantMessage(data, data.status);
+        appendAssistantMessage(question, data, data.status);
         setAgentState(data.status);
       } else {
         // Execução assíncrona ainda em andamento ("running"): entrega ao polling.
@@ -233,6 +233,7 @@ function AbisPage() {
     if (!currentPlanId || !humanInputValue.trim()) return;
 
     setHumanInputLoading(true);
+    let handedOffToPolling = false;
     try {
       const data = await agentHumanInput(currentPlanId, humanInputValue.trim());
 
@@ -245,11 +246,11 @@ function AbisPage() {
       setLoading(true);
 
       if (data.status === "completed" || data.status === "failed") {
-        appendAssistantMessage(data, data.status);
+        appendAssistantMessage(currentGoal, data, data.status);
         setAgentState(data.status);
       } else if (data.status === "awaiting_human" && data.human_question) {
         setPendingHumanQuestion(data.human_question);
-        appendAssistantMessage(data, "awaiting_human");
+        appendAssistantMessage(currentGoal, data, "awaiting_human");
         setHumanInputOpen(true);
         setAgentState("awaiting_human");
       } else if (!data.success) {
@@ -285,9 +286,9 @@ function AbisPage() {
         if (data.plan) setCurrentPlan(data.plan);
         if (data.results) setAgentResults(data.results);
         if (data.status === "awaiting_human" && data.human_question) {
-          if (finalizedPlanRef.current !== planId) {
-            finalizedPlanRef.current = planId;
-            appendAssistantMessage(data, "awaiting_human");
+          if (finalizedPlanRef.current !== `${planId}:human`) {
+            finalizedPlanRef.current = `${planId}:human`;
+            appendAssistantMessage(currentGoal, data, "awaiting_human");
           }
           setPendingHumanQuestion(data.human_question);
           setHumanInputOpen(true);
@@ -295,9 +296,9 @@ function AbisPage() {
           setLoading(false);
         } else if (data.status === "completed" || data.status === "failed") {
           // Adiciona a resposta final do assistente ao chat (uma única vez por plano).
-          if (finalizedPlanRef.current !== planId) {
-            finalizedPlanRef.current = planId;
-            appendAssistantMessage(data, data.status);
+          if (finalizedPlanRef.current !== `${planId}:final`) {
+            finalizedPlanRef.current = `${planId}:final`;
+            appendAssistantMessage(currentGoal, data, data.status);
             if (data.status === "failed") {
               toast.error(data.error || "Falha ao executar a tarefa.");
             }
