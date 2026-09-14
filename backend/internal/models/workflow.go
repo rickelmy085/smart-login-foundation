@@ -15,6 +15,34 @@ const (
 	StatusBlocked        TaskStatus = "blocked"
 )
 
+// ValidTaskTransitions defines allowed state transitions.
+// Key = from status, Value = slice of allowed to statuses.
+var ValidTaskTransitions = map[TaskStatus][]TaskStatus{
+	StatusDetected:        {StatusCollectingData, StatusBlocked, StatusCompleted},
+	StatusCollectingData:  {StatusValidating, StatusReadyToGenerate, StatusBlocked, StatusDetected},
+	StatusValidating:      {StatusReadyToGenerate, StatusNeedsReview, StatusCollectingData, StatusBlocked},
+	StatusReadyToGenerate: {StatusGenerating, StatusBlocked, StatusCollectingData},
+	StatusGenerating:      {StatusGenerated, StatusBlocked},
+	StatusGenerated:       {StatusCompleted, StatusNeedsReview, StatusBlocked},
+	StatusNeedsReview:     {StatusCompleted, StatusGenerating, StatusBlocked},
+	StatusCompleted:       {}, // Terminal state
+	StatusBlocked:         {StatusCollectingData, StatusDetected}, // Can retry
+}
+
+// IsValidTransition checks if a state transition is allowed.
+func IsValidTransition(from, to TaskStatus) bool {
+	allowed, ok := ValidTaskTransitions[from]
+	if !ok {
+		return false
+	}
+	for _, a := range allowed {
+		if a == to {
+			return true
+		}
+	}
+	return false
+}
+
 // DocumentRunStatus represents the status of a generated document.
 type DocumentRunStatus string
 
@@ -277,4 +305,18 @@ type HistoryItem struct {
 	Status    string `json:"status" db:"status"`
 	CreatedAt string `json:"createdAt" db:"created_at"`
 	Sources   int    `json:"sources" db:"sources"`
+}
+
+// WorkflowStep represents a step in the workflow execution.
+type WorkflowStep struct {
+	ID          string  `json:"id" db:"id"`
+	TaskID      string  `json:"taskId" db:"task_id"`
+	StepKey     string  `json:"stepKey" db:"step_key"`
+	Name        string  `json:"name" db:"name"`
+	Status      string  `json:"status" db:"status"`
+	Order       int     `json:"order" db:"step_order"`
+	StartedAt   *string `json:"startedAt,omitempty" db:"started_at"`
+	CompletedAt *string `json:"completedAt,omitempty" db:"completed_at"`
+	Error       string  `json:"error,omitempty" db:"error"`
+	CreatedAt   string  `json:"createdAt" db:"created_at"`
 }

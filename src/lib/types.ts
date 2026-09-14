@@ -1,6 +1,87 @@
 // Shared types for the ABIS frontend
 // This file consolidates types that were duplicated between chat.ts and workflow.ts
 
+// ---------- Agent types ----------
+
+export type AgentStatus = 
+  | "idle"
+  | "planning"
+  | "executing"
+  | "awaiting_human"
+  | "completed"
+  | "failed";
+
+export type AgentStepStatus = 
+  | "pending"
+  | "running"
+  | "completed"
+  | "failed"
+  | "skipped";
+
+export type AgentPlan = {
+  goal: string;
+  steps: AgentPlanStep[];
+  required_tools: string[];
+  metadata?: Record<string, any>;
+};
+
+export type AgentPlanStep = {
+  step_number: number;
+  tool: string;
+  description: string;
+  arguments?: Record<string, any>;
+  expected_output: string;
+  depends_on?: number[];
+  condition?: string;
+  status?: AgentStepStatus;
+  result?: any;
+  error?: string;
+};
+
+export type AgentResponse = {
+  success: boolean;
+  message: string;
+  plan_id?: string;
+  plan?: AgentPlan;
+  results?: AgentToolResult[];
+  current_step?: number;
+  status: AgentStatus;
+  next_action?: string;
+  requires_human?: boolean;
+  human_question?: string;
+  error?: string;
+};
+
+export type AgentToolResult = {
+  tool: string;
+  success: boolean;
+  output?: any;
+  error?: string;
+};
+
+export type WorkflowTraceStep = {
+  step_key: string;
+  name: string;
+  status: "pending" | "running" | "completed" | "failed" | "skipped";
+  order: number;
+  started_at?: string;
+  completed_at?: string;
+  error?: string;
+  description?: string;
+};
+
+export type AgentTrace = {
+  plan_id: string;
+  goal: string;
+  current_step: number;
+  steps: WorkflowTraceStep[];
+  next_action?: string;
+  status: AgentStatus;
+  requires_human?: boolean;
+  human_question?: string;
+  created_at: string;
+};
+
 // ---------- Chat types ----------
 
 export type Source = {
@@ -22,6 +103,7 @@ export type ChatMessage = {
   documentRunId?: string;
   documentDocxUrl?: string;
   documentPdfUrl?: string;
+  agentTrace?: AgentTrace;
 };
 
 export type ChatResponse = {
@@ -30,6 +112,7 @@ export type ChatResponse = {
   documentRunId?: string;
   documentDocxUrl?: string;
   documentPdfUrl?: string;
+  agentTrace?: AgentTrace;
 };
 
 // ---------- Workflow types ----------
@@ -183,6 +266,27 @@ export type HistoryItem = {
   status: string;
   createdAt: string;
   sources: number;
+};
+
+export type WorkflowStep = {
+  id: string;
+  taskId: string;
+  stepKey: string;
+  name: string;
+  status: string;
+  order: number;
+  startedAt?: string;
+  completedAt?: string;
+  error?: string;
+  createdAt: string;
+};
+
+export type NextActionResponse = {
+  nextAction: string;
+};
+
+export type WorkflowStepsResponse = {
+  steps: WorkflowStep[];
 };
 
 export type HistoryResponse = {

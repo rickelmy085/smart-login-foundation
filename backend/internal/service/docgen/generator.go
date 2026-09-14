@@ -26,6 +26,20 @@ var (
 	ErrValidationFailed = errors.New("validation failed")
 )
 
+// updateTaskStatus updates the task status with state machine validation.
+func (g *Generator) updateTaskStatus(ctx context.Context, taskID string, newStatus models.TaskStatus, templateID string) error {
+	currentTask, err := g.repo.GetTask(ctx, taskID)
+	if err != nil {
+		return err
+	}
+
+	if !models.IsValidTransition(currentTask.Status, newStatus) {
+		return fmt.Errorf("invalid state transition: %s -> %s", currentTask.Status, newStatus)
+	}
+
+	return g.repo.UpdateTaskStatus(ctx, taskID, newStatus, templateID)
+}
+
 // Generator handles document generation using either the Python Document Engine or Go generator.
 type Generator struct {
 	repo             *repository.WorkflowRepo
@@ -60,7 +74,9 @@ func (g *Generator) Generate(ctx context.Context, taskID string) (*models.Docume
 		return nil, err
 	}
 
-	if task.Status != models.StatusReadyToGenerate {
+	// Allow generation from ready_to_generate or generating state
+	// (workflow service manages the state transitions)
+	if task.Status != models.StatusReadyToGenerate && task.Status != models.StatusGenerating {
 		return nil, fmt.Errorf("task not ready for generation: current status %s", task.Status)
 	}
 
@@ -98,7 +114,7 @@ func (g *Generator) Generate(ctx context.Context, taskID string) (*models.Docume
 				return nil, fmt.Errorf("document engine failed: %w", err)
 			}
 		} else {
-			if err := g.repo.UpdateTaskStatus(ctx, taskID, models.StatusGenerated, task.TemplateID); err != nil {
+			if err := g.updateTaskStatus(ctx, taskID, models.StatusGenerated, task.TemplateID); err != nil {
 				return nil, fmt.Errorf("update task status: %w", err)
 			}
 			return run, nil
@@ -110,7 +126,7 @@ func (g *Generator) Generate(ctx context.Context, taskID string) (*models.Docume
 		return nil, err
 	}
 
-	if err := g.repo.UpdateTaskStatus(ctx, taskID, models.StatusGenerated, task.TemplateID); err != nil {
+	if err := g.updateTaskStatus(ctx, taskID, models.StatusGenerated, task.TemplateID); err != nil {
 		return nil, fmt.Errorf("update task status: %w", err)
 	}
 

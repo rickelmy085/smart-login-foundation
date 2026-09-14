@@ -1,5 +1,28 @@
 import { createFileRoute } from "@tanstack/react-router";
-import { Bot, Download, Paperclip, SendHorizonal, Sparkles, User, AlertCircle, FileText, Globe } from "lucide-react";
+import {
+  Bot,
+  Download,
+  Paperclip,
+  SendHorizonal,
+  Sparkles,
+  User,
+  AlertCircle,
+  FileText,
+  Globe,
+  Loader2,
+  Check,
+  Clock,
+  ArrowRight,
+  PauseCircle,
+  AlertTriangle,
+  FileCheck2,
+  BookOpen,
+  ShieldCheck,
+  XCircle,
+  Circle,
+  CheckCircle2,
+  CircleDot,
+} from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
 import ReactMarkdown from "react-markdown";
@@ -8,10 +31,26 @@ import rehypeHighlight from "rehype-highlight";
 
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
-import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
+import { Badge } from "@/components/ui/badge";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 import { suggestedPrompts } from "@/lib/mock-data";
-import { sendQuestion, type ChatMessage, type Source } from "@/lib/chat";
+import {
+  type ChatMessage,
+  type Source,
+  type AgentStatus,
+  type AgentPlan,
+  agentProcess,
+  agentHumanInput,
+  getAgentStatus,
+} from "@/lib/chat";
 import { downloadDocument } from "@/lib/api";
 
 function uuid() {
@@ -29,18 +68,30 @@ export const Route = createFileRoute("/app/copilot")({
   head: () => ({
     meta: [
       { title: "ABIS — Agentic Banking Intelligence System" },
-      { name: "description", content: "Área inicial do assistente inteligente ABIS." },
+      { name: "description", content: "Assistente inteligente ABIS." },
       { property: "og:title", content: "ABIS — Agentic Banking Intelligence System" },
-      { property: "og:description", content: "Área inicial do assistente inteligente ABIS." },
+      { property: "og:description", content: "Assistente inteligente ABIS." },
     ],
   }),
   component: AbisPage,
 });
 
 const capabilities = [
-  { title: "Consultar políticas", text: "Perguntas sobre normas, benefícios e procedimentos." },
-  { title: "Resumir documentos", text: "Sínteses objetivas de manuais e comunicados." },
-  { title: "Orientar fluxos", text: "Passo a passo de processos internos." },
+  {
+    title: "Gerar documentos",
+    text: "Relatórios operacionais, solicitações de aquisição e outros documentos normatizados.",
+    icon: FileCheck2,
+  },
+  {
+    title: "Consultar normativos",
+    text: "Perguntas sobre políticas, procedimentos e regras internas da organização.",
+    icon: BookOpen,
+  },
+  {
+    title: "Executar workflows",
+    text: "Condução guiada de tarefas com validação de requisitos e regras.",
+    icon: ShieldCheck,
+  },
 ];
 
 function AbisPage() {
@@ -49,6 +100,15 @@ function AbisPage() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [allowWebSearch, setAllowWebSearch] = useState(false);
+  const [agentState, setAgentState] = useState<AgentStatus>("idle");
+  const [currentPlan, setCurrentPlan] = useState<AgentPlan | null>(null);
+  const [currentPlanId, setCurrentPlanId] = useState<string | null>(null);
+  const [currentGoal, setCurrentGoal] = useState<string>("");
+  const [agentResults, setAgentResults] = useState<any[]>([]);
+  const [pendingHumanQuestion, setPendingHumanQuestion] = useState<string | null>(null);
+  const [humanInputOpen, setHumanInputOpen] = useState(false);
+  const [humanInputValue, setHumanInputValue] = useState("");
+  const [humanInputLoading, setHumanInputLoading] = useState(false);
   const endRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -64,25 +124,65 @@ function AbisPage() {
     setMessages((prev) => [...prev, { id: uuid(), role: "user", content: question }]);
     setValue("");
     setLoading(true);
+    setAgentState("planning");
+    setAgentResults([]);
+    setCurrentPlan(null);
+    setCurrentGoal(question);
 
     try {
-      const data = await sendQuestion(question, allowWebSearch);
+      const data = await agentProcess({ goal: question, allowWebSearch });
 
-      const isNoEvidence = /normativos dispon.i?veis n.?o trazem informa.?.?o suficiente/i.test(data.answer);
+      if (data.plan) setCurrentPlan(data.plan);
+      if (data.plan_id) setCurrentPlanId(data.plan_id);
+      if (data.results) setAgentResults(data.results);
 
-      setMessages((prev) => [
-        ...prev,
-        {
-          id: uuid(),
-          role: "assistant",
-          content: data.answer,
-          sources: data.sources,
-          documentRunId: data.documentRunId,
-          documentDocxUrl: data.documentDocxUrl,
-          documentPdfUrl: data.documentPdfUrl,
-          error: isNoEvidence ? "no_evidence" : undefined,
-        },
-      ]);
+      if (data.status === "awaiting_human" && data.human_question) {
+        setPendingHumanQuestion(data.human_question);
+        setMessages((prev) => [
+          ...prev,
+          {
+            id: uuid(),
+            role: "assistant",
+            content: data.message,
+            agentTrace: buildTrace(question, data, "awaiting_human"),
+          },
+        ]);
+        setHumanInputOpen(true);
+        setAgentState("awaiting_human");
+      } else if (data.status === "completed") {
+        const isNoEvidence = /normativos dispon.i?veis n.?o trazem informa.?.?o suficiente/i.test(
+          data.message,
+        );
+        setMessages((prev) => [
+          ...prev,
+          {
+            id: uuid(),
+            role: "assistant",
+            content: data.message,
+            sources: data.results?.flatMap((r: any) => r.output?.sources ?? []) ?? [],
+            documentRunId: data.results?.find((r: any) => r.tool === "generate_document")?.output
+              ?.document_run_id,
+            documentDocxUrl: data.results?.find((r: any) => r.tool === "generate_document")?.output
+              ?.docx_url,
+            documentPdfUrl: data.results?.find((r: any) => r.tool === "generate_document")?.output
+              ?.pdf_url,
+            error: isNoEvidence ? "no_evidence" : undefined,
+            agentTrace: buildTrace(question, data, "completed"),
+          },
+        ]);
+      } else if (data.status === "failed") {
+        setMessages((prev) => [
+          ...prev,
+          {
+            id: uuid(),
+            role: "assistant",
+            content: data.message,
+            error: data.error || "Falha ao executar a tarefa.",
+          },
+        ]);
+      } else {
+        setAgentState(data.status);
+      }
     } catch (err) {
       const message = err instanceof Error ? err.message : "Erro ao consultar o assistente.";
       setError(message);
@@ -91,33 +191,128 @@ function AbisPage() {
         {
           id: uuid(),
           role: "assistant",
-          content: "Não foi possível obter uma resposta no momento.",
+          content: "Não foi possível processar sua solicitação no momento.",
           error: message,
         },
       ]);
       toast.error(message);
     } finally {
       setLoading(false);
+      setAgentState((s) => (s === "awaiting_human" ? s : "idle"));
     }
   }
+
+  async function handleHumanSubmit() {
+    if (!currentPlanId || !humanInputValue.trim()) return;
+
+    setHumanInputLoading(true);
+    try {
+      const data = await agentHumanInput(currentPlanId, humanInputValue.trim());
+
+      if (data.plan) setCurrentPlan(data.plan);
+      if (data.results) setAgentResults(data.results);
+
+      setHumanInputOpen(false);
+      setHumanInputValue("");
+      setPendingHumanQuestion(null);
+      setLoading(true);
+
+      if (data.status === "completed") {
+        setMessages((prev) => [
+          ...prev,
+          {
+            id: uuid(),
+            role: "assistant",
+            content: data.message,
+            sources: data.results?.flatMap((r: any) => r.output?.sources ?? []) ?? [],
+            documentRunId: data.results?.find((r: any) => r.tool === "generate_document")?.output
+              ?.document_run_id,
+            documentDocxUrl: data.results?.find((r: any) => r.tool === "generate_document")?.output
+              ?.docx_url,
+            documentPdfUrl: data.results?.find((r: any) => r.tool === "generate_document")?.output
+              ?.pdf_url,
+            agentTrace: buildTrace(currentGoal, data, "completed"),
+          },
+        ]);
+        setAgentState("completed");
+      } else if (data.status === "awaiting_human" && data.human_question) {
+        setPendingHumanQuestion(data.human_question);
+        setMessages((prev) => [
+          ...prev,
+          {
+            id: uuid(),
+            role: "assistant",
+            content: data.message,
+            agentTrace: buildTrace(currentGoal, data, "awaiting_human"),
+          },
+        ]);
+        setHumanInputOpen(true);
+        setAgentState("awaiting_human");
+      } else if (data.status === "failed") {
+        setMessages((prev) => [
+          ...prev,
+          {
+            id: uuid(),
+            role: "assistant",
+            content: data.message,
+            error: data.error || "Falha ao executar a tarefa.",
+          },
+        ]);
+        setAgentState("failed");
+      } else {
+        setAgentState(data.status);
+      }
+    } catch (err) {
+      const message = err instanceof Error ? err.message : "Erro ao processar resposta.";
+      toast.error(message);
+    } finally {
+      setHumanInputLoading(false);
+      setLoading(false);
+    }
+  }
+
+  useEffect(() => {
+    if (!currentPlanId || agentState !== "executing") return;
+    const interval = setInterval(async () => {
+      try {
+        const data = await getAgentStatus(currentPlanId);
+        if (data.plan) setCurrentPlan(data.plan);
+        if (data.results) setAgentResults(data.results);
+        if (data.status === "awaiting_human" && data.human_question) {
+          setPendingHumanQuestion(data.human_question);
+          setHumanInputOpen(true);
+          setAgentState("awaiting_human");
+        } else if (data.status === "completed" || data.status === "failed") {
+          setAgentState(data.status);
+        }
+      } catch {
+      }
+    }, 2500);
+    return () => clearInterval(interval);
+  }, [currentPlanId, agentState]);
 
   return (
     <div className="mx-auto flex min-h-[calc(100svh-8rem)] max-w-3xl flex-col">
       <div className="flex flex-1 flex-col">
         {messages.length === 0 ? (
-          <div className="flex flex-1 flex-col items-center justify-center text-center">
+          <div className="flex flex-1 flex-col items-center justify-center text-center px-4">
             <span className="grid size-16 place-items-center rounded-2xl bg-gradient-hero text-hero-foreground shadow-elegant">
               <Bot className="size-8" aria-hidden="true" />
             </span>
             <h2 className="mt-6 text-2xl font-bold sm:text-3xl">Olá. Como posso ajudar hoje?</h2>
             <p className="mt-2 max-w-md text-sm text-muted-foreground">
-              Consulte conhecimento corporativo, normativos e informações operacionais em linguagem natural.
+              Eu entendo o que você precisa fazer e conduzo a tarefa até o resultado, respeitando os
+              normativos da organização.
             </p>
 
             <ul className="mt-8 grid w-full gap-3 sm:grid-cols-3">
               {capabilities.map((c) => (
-                <li key={c.title} className="rounded-xl border border-border bg-card p-4 text-left shadow-panel">
-                  <p className="text-sm font-semibold">{c.title}</p>
+                <li
+                  key={c.title}
+                  className="rounded-xl border border-border bg-card p-4 text-left shadow-panel transition-colors hover:border-primary/40"
+                >
+                  <c.icon className="size-5 text-brand" aria-hidden="true" />
+                  <p className="mt-2 text-sm font-semibold">{c.title}</p>
                   <p className="mt-1 text-xs text-muted-foreground">{c.text}</p>
                 </li>
               ))}
@@ -143,23 +338,17 @@ function AbisPage() {
             </div>
           </div>
         ) : (
-          <div className="flex-1 space-y-4 overflow-y-auto pb-4">
+          <div className="flex-1 space-y-5 overflow-y-auto pb-4">
             {messages.map((m) => (
               <MessageBubble key={m.id} message={m} />
             ))}
             {loading && (
-              <div className="flex items-start gap-3">
-                <span className="mt-1 grid size-8 shrink-0 place-items-center rounded-full bg-muted text-xs">
-                  <Bot className="size-4" aria-hidden="true" />
-                </span>
-                <div className="rounded-2xl border border-border bg-card px-4 py-3 text-sm">
-                  <span className="inline-flex items-center gap-1 text-muted-foreground">
-                    <span className="size-2 animate-pulse rounded-full bg-foreground/60" />
-                    <span className="size-2 animate-pulse rounded-full bg-foreground/60 [animation-delay:0.15s]" />
-                    <span className="size-2 animate-pulse rounded-full bg-foreground/60 [animation-delay:0.3s]" />
-                  </span>
-                </div>
-              </div>
+              <AgentLoadingIndicator
+                state={agentState}
+                plan={currentPlan}
+                results={agentResults}
+                goal={currentGoal}
+              />
             )}
             <div ref={endRef} />
           </div>
@@ -186,6 +375,7 @@ function AbisPage() {
           placeholder={messages.length === 0 ? "Pergunte algo ao ABIS…" : "Continuar conversa…"}
           rows={2}
           className="min-h-0 resize-none border-0 bg-transparent shadow-none focus-visible:ring-0"
+          disabled={loading}
         />
         <div className="flex items-center justify-between px-1 pt-1">
           <div className="flex items-center gap-2">
@@ -218,6 +408,139 @@ function AbisPage() {
           </div>
         </div>
       </form>
+
+      <Dialog
+        open={humanInputOpen}
+        onOpenChange={(open) => {
+          if (!open && agentState === "awaiting_human") return;
+          setHumanInputOpen(open);
+        }}
+      >
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <PauseCircle className="size-5 text-warning" aria-hidden="true" />
+              Ação necessária
+            </DialogTitle>
+            <DialogDescription>
+              O ABIS precisa da sua intervenção para continuar.
+            </DialogDescription>
+          </DialogHeader>
+          {pendingHumanQuestion && (
+            <div className="rounded-lg border border-border bg-muted/40 p-3 text-sm">
+              {pendingHumanQuestion}
+            </div>
+          )}
+          <Textarea
+            value={humanInputValue}
+            onChange={(e) => setHumanInputValue(e.target.value)}
+            placeholder="Informe os dados solicitados…"
+            rows={3}
+            className="resize-none"
+            disabled={humanInputLoading}
+          />
+          <DialogFooter>
+            <Button
+              onClick={handleHumanSubmit}
+              disabled={!humanInputValue.trim() || humanInputLoading}
+            >
+              {humanInputLoading && <Loader2 className="mr-2 size-4 animate-spin" aria-hidden="true" />}
+              Continuar
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+    </div>
+  );
+}
+
+function buildTrace(goal: string, data: any, status: AgentStatus) {
+  return {
+    plan_id: data.plan_id || "",
+    goal,
+    current_step: data.current_step || 0,
+    steps:
+      data.plan?.steps?.map((s: any) => ({
+        step_key: s.tool,
+        name: s.description,
+        status: (status === "completed" ? "completed" : s.status ?? "pending") as any,
+        order: s.step_number,
+        description: s.description,
+      })) ?? [],
+    next_action: data.next_action,
+    status,
+    requires_human: status === "awaiting_human",
+    human_question: data.human_question,
+    created_at: new Date().toISOString(),
+  };
+}
+
+function AgentLoadingIndicator({
+  state,
+  plan,
+  results,
+  goal,
+}: {
+  state: AgentStatus;
+  plan: any;
+  results: any[];
+  goal: string;
+}) {
+  return (
+    <div className="flex items-start gap-3">
+      <span className="mt-1 grid size-8 shrink-0 place-items-center rounded-full bg-muted text-xs">
+        <Bot className="size-4 text-primary" aria-hidden="true" />
+      </span>
+      <div className="flex-1 rounded-2xl border border-border bg-card px-4 py-3 text-sm shadow-panel">
+        <div className="flex items-center gap-2">
+          <Loader2 className="size-4 animate-spin text-primary" aria-hidden="true" />
+          <span className="font-medium">Executando tarefa</span>
+        </div>
+        {goal && (
+          <p className="mt-1 text-xs text-muted-foreground truncate">Objetivo: {goal}</p>
+        )}
+        {plan?.steps && plan.steps.length > 0 && (
+          <div className="mt-3 space-y-1.5">
+            {plan.steps.map((step: any, idx: number) => (
+              <StepStatusRow key={step.step_number || idx} step={step} />
+            ))}
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+function StepStatusRow({ step }: { step: any }) {
+  const status = step.status || "pending";
+  if (status === "completed") {
+    return (
+      <div className="flex items-center gap-2 text-xs">
+        <CheckCircle2 className="size-4 shrink-0 text-success" aria-hidden="true" />
+        <span className="text-foreground/90">{step.description}</span>
+      </div>
+    );
+  }
+  if (status === "running") {
+    return (
+      <div className="flex items-center gap-2 text-xs">
+        <Loader2 className="size-4 shrink-0 animate-spin text-primary" aria-hidden="true" />
+        <span className="font-medium text-primary">{step.description}</span>
+      </div>
+    );
+  }
+  if (status === "failed") {
+    return (
+      <div className="flex items-center gap-2 text-xs">
+        <XCircle className="size-4 shrink-0 text-destructive" aria-hidden="true" />
+        <span className="text-destructive">{step.description}</span>
+      </div>
+    );
+  }
+  return (
+    <div className="flex items-center gap-2 text-xs">
+      <Circle className="size-4 shrink-0 text-muted-foreground" aria-hidden="true" />
+      <span className="text-muted-foreground">{step.description}</span>
     </div>
   );
 }
@@ -232,15 +555,17 @@ function MessageBubble({ message }: { message: ChatMessage }) {
           isUser ? "bg-primary text-primary-foreground" : "bg-muted"
         }`}
       >
-        {isUser ? <User className="size-4" aria-hidden="true" /> : <Bot className="size-4" aria-hidden="true" />}
+        {isUser ? (
+          <User className="size-4" aria-hidden="true" />
+        ) : (
+          <Bot className="size-4 text-primary" aria-hidden="true" />
+        )}
       </span>
 
       <div className={`flex max-w-[85%] flex-col ${isUser ? "items-end" : "items-start"}`}>
         <div
           className={`rounded-2xl px-4 py-3 text-sm leading-relaxed ${
-            isUser
-              ? "bg-primary text-primary-foreground"
-              : "border border-border bg-card"
+            isUser ? "bg-primary text-primary-foreground" : "border border-border bg-card shadow-panel"
           }`}
         >
           {isUser ? (
@@ -251,44 +576,69 @@ function MessageBubble({ message }: { message: ChatMessage }) {
                 remarkPlugins={[remarkGfm]}
                 rehypePlugins={[rehypeHighlight]}
                 components={{
-                  p: ({ node, children, ...props }) => (
-                    <p className="mb-2 leading-relaxed" {...props}>{children}</p>
+                  p: ({ children, ...props }) => (
+                    <p className="mb-2 leading-relaxed last:mb-0" {...props}>
+                      {children}
+                    </p>
                   ),
-                  h1: ({ node, children, ...props }) => (
-                    <h1 className="my-3 text-xl font-bold" {...props}>{children}</h1>
+                  h1: ({ children, ...props }) => (
+                    <h1 className="my-3 text-xl font-bold" {...props}>
+                      {children}
+                    </h1>
                   ),
-                  h2: ({ node, children, ...props }) => (
-                    <h2 className="my-3 text-lg font-bold" {...props}>{children}</h2>
+                  h2: ({ children, ...props }) => (
+                    <h2 className="my-3 text-lg font-bold" {...props}>
+                      {children}
+                    </h2>
                   ),
-                  h3: ({ node, children, ...props }) => (
-                    <h3 className="my-2 text-base font-semibold" {...props}>{children}</h3>
+                  h3: ({ children, ...props }) => (
+                    <h3 className="my-2 text-base font-semibold" {...props}>
+                      {children}
+                    </h3>
                   ),
-                  ul: ({ node, children, ...props }) => (
-                    <ul className="my-2 ml-4 list-disc" {...props}>{children}</ul>
+                  ul: ({ children, ...props }) => (
+                    <ul className="my-2 ml-4 list-disc space-y-1" {...props}>
+                      {children}
+                    </ul>
                   ),
-                  ol: ({ node, children, ...props }) => (
-                    <ol className="my-2 ml-4 list-decimal" {...props}>{children}</ol>
+                  ol: ({ children, ...props }) => (
+                    <ol className="my-2 ml-4 list-decimal space-y-1" {...props}>
+                      {children}
+                    </ol>
                   ),
-                  li: ({ node, children, ...props }) => (
-                    <li className="mb-1" {...props}>{children}</li>
+                  li: ({ children, ...props }) => (
+                    <li className="" {...props}>
+                      {children}
+                    </li>
                   ),
-                  strong: ({ node, children, ...props }) => (
-                    <strong className="font-semibold" {...props}>{children}</strong>
+                  strong: ({ children, ...props }) => (
+                    <strong className="font-semibold" {...props}>
+                      {children}
+                    </strong>
                   ),
-                  blockquote: ({ node, children, ...props }) => (
-                    <blockquote className="my-2 border-l-2 border-border pl-4 italic text-muted-foreground" {...props}>{children}</blockquote>
+                  blockquote: ({ children, ...props }) => (
+                    <blockquote
+                      className="my-2 border-l-2 border-border pl-4 italic text-muted-foreground"
+                      {...props}
+                    >
+                      {children}
+                    </blockquote>
                   ),
-                  code: ({ node, inline, className, children, ...props }) => {
+                  code: ({ className, children, ...props }) => {
                     const match = /language-(\w+)/.exec(className || "");
-                    const codeClass = match
-                      ? `language-${match[1]}`
-                      : inline
-                        ? "inline-code"
-                        : undefined;
+                    const inline = !match && !className;
                     return (
                       <code
-                        className={codeClass}
-                        style={inline ? { background: "var(--color-muted)", borderRadius: "0.35rem", padding: "0.1rem 0.3rem" } : undefined}
+                        className={match ? `language-${match[1]}` : className}
+                        style={
+                          inline
+                            ? {
+                                background: "var(--color-muted)",
+                                borderRadius: "0.35rem",
+                                padding: "0.1rem 0.3rem",
+                              }
+                            : undefined
+                        }
                         {...props}
                       >
                         {children}
@@ -302,88 +652,215 @@ function MessageBubble({ message }: { message: ChatMessage }) {
             </div>
           )}
           {message.error && message.error !== "no_evidence" && (
-            <div className="mt-2 flex items-center gap-2 text-xs text-red-500">
+            <div className="mt-2 flex items-center gap-2 text-xs text-destructive">
               <AlertCircle className="size-3.5" aria-hidden="true" />
               <span>{message.error}</span>
             </div>
           )}
         </div>
 
+        {!isUser && message.documentRunId && (
+          <DocumentResultCard
+            documentRunId={message.documentRunId}
+            docxUrl={message.documentDocxUrl}
+            pdfUrl={message.documentPdfUrl}
+          />
+        )}
+
         {!isUser && message.sources && message.sources.length > 0 && (
-          <div className="mt-2 w-full space-y-2">
-            <p className="text-xs font-semibold text-muted-foreground">Fontes normativas</p>
-            <div className="grid gap-2">
-              {message.sources.map((src, idx) => (
-                <SourceCard key={`${src.documentId}-${src.chunkOrd}-${idx}`} source={src} />
-              ))}
-            </div>
-          </div>
+          <SourcesList sources={message.sources} />
         )}
 
         {!isUser && message.error === "no_evidence" && (
           <div className="mt-2 flex items-start gap-2 rounded-xl border border-warning/40 bg-warning/10 px-3 py-2 text-xs text-warning-foreground">
             <AlertCircle className="mt-0.5 size-3.5 shrink-0" aria-hidden="true" />
             <span>
-              Esta resposta pode não refletir a base normativa atual. Confira o normativo oficial ou contate a área
-              responsável.
+              Esta resposta pode não refletir a base normativa atual. Confira o normativo oficial ou
+              contate a área responsável.
             </span>
           </div>
         )}
 
-        {!isUser && message.documentRunId && (
-          <div className="mt-2 flex flex-wrap gap-2">
-            <Button
-              size="sm"
-              variant="secondary"
-              onClick={async () => {
-                try {
-                  await downloadDocument(
-                    `/api/documents/${message.documentRunId}/docx`,
-                    `ABIS-documento-${message.documentRunId}.docx`,
-                  );
-                } catch (err) {
-                  toast.error(err instanceof Error ? err.message : "Erro ao baixar documento.");
-                }
-              }}
-            >
-              <Download className="mr-2 size-4" aria-hidden={true} />
-              Baixar DOCX
-            </Button>
-            <Button
-              size="sm"
-              variant="secondary"
-              onClick={async () => {
-                try {
-                  await downloadDocument(
-                    `/api/documents/${message.documentRunId}/pdf`,
-                    `ABIS-documento-${message.documentRunId}.pdf`,
-                  );
-                } catch (err) {
-                  toast.error(err instanceof Error ? err.message : "Erro ao baixar documento.");
-                }
-              }}
-            >
-              <Download className="mr-2 size-4" aria-hidden={true} />
-              Baixar PDF
-            </Button>
-          </div>
+        {!isUser && message.agentTrace && (
+          <AgentTraceCard trace={message.agentTrace} />
         )}
       </div>
     </div>
   );
 }
 
-function SourceCard({ source }: { source: Source }) {
+function DocumentResultCard({
+  documentRunId,
+  docxUrl,
+  pdfUrl,
+}: {
+  documentRunId: string;
+  docxUrl?: string;
+  pdfUrl?: string;
+}) {
+  const [downloading, setDownloading] = useState<string | null>(null);
+
+  async function handleDownload(format: "docx" | "pdf") {
+    setDownloading(format);
+    try {
+      await downloadDocument(
+        `/api/documents/${documentRunId}/${format}`,
+        `ABIS-documento-${documentRunId}.${format}`,
+      );
+      toast.success(`Download do ${format.toUpperCase()} iniciado.`);
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Erro ao baixar documento.");
+    } finally {
+      setDownloading(null);
+    }
+  }
+
   return (
-    <div className="rounded-xl border border-border bg-card/60 p-3">
-      <div className="flex items-center gap-2">
-        <FileText className="size-3.5 text-muted-foreground" aria-hidden="true" />
-        <p className="text-xs font-semibold line-clamp-1">{source.title || source.documentId}</p>
+    <div className="mt-3 w-full overflow-hidden rounded-xl border border-success/40 bg-success/5 shadow-panel">
+      <div className="flex items-start gap-3 p-4">
+        <span className="grid size-10 shrink-0 place-items-center rounded-lg bg-success/15 text-success">
+          <FileCheck2 className="size-5" aria-hidden="true" />
+        </span>
+        <div className="min-w-0 flex-1">
+          <div className="flex items-center gap-2">
+            <p className="text-sm font-semibold">Documento gerado</p>
+            <Badge
+              variant="outline"
+              className="border-success/40 bg-success/10 text-success"
+            >
+              Concluído
+            </Badge>
+          </div>
+          <p className="mt-0.5 text-xs text-muted-foreground">
+            Documento disponível para download.
+          </p>
+        </div>
       </div>
-      <p className="mt-1 line-clamp-3 text-xs text-muted-foreground">{source.snippet || source.content}</p>
-      <p className="mt-1 text-[11px] text-muted-foreground/80">
-        score {typeof source.score === "number" ? source.score.toFixed(2) : "—"}
+      <div className="flex flex-wrap gap-2 border-t border-border/60 bg-card/40 px-4 py-3">
+        <Button
+          size="sm"
+          onClick={() => handleDownload("docx")}
+          disabled={downloading !== null}
+        >
+          {downloading === "docx" ? (
+            <Loader2 className="mr-2 size-4 animate-spin" aria-hidden="true" />
+          ) : (
+            <Download className="mr-2 size-4" aria-hidden="true" />
+          )}
+          Baixar DOCX
+        </Button>
+        <Button
+          size="sm"
+          variant="secondary"
+          onClick={() => handleDownload("pdf")}
+          disabled={downloading !== null}
+        >
+          {downloading === "pdf" ? (
+            <Loader2 className="mr-2 size-4 animate-spin" aria-hidden="true" />
+          ) : (
+            <Download className="mr-2 size-4" aria-hidden="true" />
+          )}
+          Baixar PDF
+        </Button>
+      </div>
+    </div>
+  );
+}
+
+function SourcesList({ sources }: { sources: Source[] }) {
+  const deduped = sources.reduce<Source[]>((acc, s) => {
+    const key = s.title || s.documentId;
+    if (!acc.some((a) => (a.title || a.documentId) === key)) acc.push(s);
+    return acc;
+  }, []);
+
+  return (
+    <div className="mt-3 w-full">
+      <p className="mb-2 flex items-center gap-1.5 text-xs font-semibold text-muted-foreground">
+        <BookOpen className="size-3.5" aria-hidden="true" />
+        Fontes utilizadas
       </p>
+      <ul className="space-y-1.5">
+        {deduped.map((src, idx) => (
+          <li
+            key={`${src.documentId}-${idx}`}
+            className="flex items-start gap-2 rounded-lg border border-border bg-card/60 px-3 py-2 text-xs"
+          >
+            <FileText className="mt-0.5 size-3.5 shrink-0 text-muted-foreground" aria-hidden="true" />
+            <div className="min-w-0 flex-1">
+              <p className="font-medium truncate">{src.title || src.documentId}</p>
+              {src.snippet && (
+                <p className="mt-0.5 line-clamp-2 text-muted-foreground">{src.snippet}</p>
+              )}
+            </div>
+          </li>
+        ))}
+      </ul>
+    </div>
+  );
+}
+
+function AgentTraceCard({ trace }: { trace: any }) {
+  const [expanded, setExpanded] = useState(false);
+  if (!trace?.steps?.length) return null;
+
+  const completed = trace.steps.filter((s: any) => s.status === "completed").length;
+  const total = trace.steps.length;
+  const isCompleted = trace.status === "completed";
+  const isFailed = trace.status === "failed";
+  const isAwaiting = trace.status === "awaiting_human";
+
+  return (
+    <div className="mt-3 w-full overflow-hidden rounded-xl border border-border bg-card/60">
+      <button
+        type="button"
+        onClick={() => setExpanded((v) => !v)}
+        className="flex w-full items-center justify-between gap-3 px-4 py-3 text-left transition-colors hover:bg-accent/40"
+      >
+        <div className="flex items-center gap-2 min-w-0">
+          {isCompleted && <CheckCircle2 className="size-4 shrink-0 text-success" aria-hidden="true" />}
+          {isFailed && <XCircle className="size-4 shrink-0 text-destructive" aria-hidden="true" />}
+          {isAwaiting && <PauseCircle className="size-4 shrink-0 text-warning" aria-hidden="true" />}
+          {!isCompleted && !isFailed && !isAwaiting && (
+            <CircleDot className="size-4 shrink-0 text-primary" aria-hidden="true" />
+          )}
+          <span className="text-xs font-medium truncate">
+            {trace.goal || "Execução da tarefa"}
+          </span>
+        </div>
+        <div className="flex items-center gap-2 shrink-0">
+          <span className="text-[11px] text-muted-foreground">
+            {completed}/{total}
+          </span>
+          <Badge
+            variant="outline"
+            className={
+              isCompleted
+                ? "border-success/40 bg-success/10 text-success"
+                : isFailed
+                  ? "border-destructive/40 bg-destructive/10 text-destructive"
+                  : isAwaiting
+                    ? "border-warning/40 bg-warning/10 text-warning-foreground"
+                    : "border-primary/40 bg-primary/10 text-primary"
+            }
+          >
+            {isCompleted
+              ? "Concluído"
+              : isFailed
+                ? "Falhou"
+                : isAwaiting
+                  ? "Aguardando"
+                  : "Em execução"}
+          </Badge>
+        </div>
+      </button>
+      {expanded && (
+        <div className="border-t border-border px-4 py-3 space-y-1.5">
+          {trace.steps.map((step: any, idx: number) => (
+            <StepStatusRow key={idx} step={step} />
+          ))}
+        </div>
+      )}
     </div>
   );
 }

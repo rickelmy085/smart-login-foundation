@@ -20,20 +20,35 @@ import (
 	"github.com/bsmart/abis/internal/groq"
 	"github.com/bsmart/abis/internal/knowledge"
 	"github.com/bsmart/abis/internal/web"
+
+	intent "github.com/bsmart/abis/internal/service/intent"
+	requirements "github.com/bsmart/abis/internal/service/requirements"
 )
 
 // Service orquestra o fluxo de RAG.
 type Service struct {
-	searcher *knowledge.Searcher
-	groq     *groq.Client
-	web      *web.Client
+	searcher              *knowledge.Searcher
+	groq                  *groq.Client
+	web                   *web.Client
+	intentClassifier      *intent.Classifier
+	requirementsExtractor *requirements.Extractor
 
 	// Quantos chunks recuperar do FTS5 antes de enviar ao LLM.
 	TopK int
 }
 
-func NewService(s *knowledge.Searcher, g *groq.Client, w *web.Client) *Service {
-	return &Service{searcher: s, groq: g, web: w, TopK: 8}
+func NewService(s *knowledge.Searcher, g *groq.Client, w *web.Client, ic *intent.Classifier, re *requirements.Extractor) *Service {
+	return &Service{searcher: s, groq: g, web: w, intentClassifier: ic, requirementsExtractor: re, TopK: 8}
+}
+
+// IntentClassifier returns the intent classifier.
+func (s *Service) IntentClassifier() *intent.Classifier {
+	return s.intentClassifier
+}
+
+// RequirementsExtractor returns the requirements extractor.
+func (s *Service) RequirementsExtractor() *requirements.Extractor {
+	return s.requirementsExtractor
 }
 
 // ChatRequest é a entrada (vinda do handler).

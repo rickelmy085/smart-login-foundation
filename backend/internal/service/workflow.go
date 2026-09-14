@@ -33,6 +33,28 @@ var (
 	ErrNoNormativeBase   = errors.New("no normative base found")
 )
 
+// AuditEvent represents a structured audit log entry.
+type AuditEvent struct {
+	EventType   string         `json:"event_type"`
+	TaskID      string         `json:"task_id,omitempty"`
+	EmployeeID  string         `json:"employee_id,omitempty"`
+	TemplateKey string         `json:"template_key,omitempty"`
+	FromStatus  string         `json:"from_status,omitempty"`
+	ToStatus    string         `json:"to_status,omitempty"`
+	StepKey     string         `json:"step_key,omitempty"`
+	StepStatus  string         `json:"step_status,omitempty"`
+	RequestID   string         `json:"request_id,omitempty"`
+	Message     string         `json:"message,omitempty"`
+	Metadata    map[string]any `json:"metadata,omitempty"`
+	Timestamp   string         `json:"timestamp"`
+}
+
+// auditLog logs a structured audit event.
+func (s *WorkflowService) auditLog(ctx context.Context, event AuditEvent) {
+	event.Timestamp = time.Now().UTC().Format(time.RFC3339)
+	slog.Info("audit", "event", event)
+}
+
 // WorkflowService orchestrates the document generation workflow.
 type WorkflowService struct {
 	repo     *repository.WorkflowRepo
@@ -77,10 +99,99 @@ func (s *WorkflowService) WithRulesEngine(engine *rules.RuleEngine) {
 	s.rulesEngine = engine
 }
 
-// defaultRules returns the default set of rules for the ABIS system.
 // RulesEngine returns the rules engine for testing.
 func (s *WorkflowService) RulesEngine() *rules.RuleEngine {
 	return s.rulesEngine
+}
+
+// UpdateTaskStatus updates the task status with state machine validation.
+func (s *WorkflowService) updateTaskStatus(ctx context.Context, taskID string, newStatus models.TaskStatus, templateID string) error {
+	currentTask, err := s.repo.GetTask(ctx, taskID)
+	if err != nil {
+		return err
+	}
+
+	if !models.IsValidTransition(currentTask.Status, newStatus) {
+		return fmt.Errorf("invalid state transition: %s -> %s", currentTask.Status, newStatus)
+	}
+
+	if err := s.repo.UpdateTaskStatus(ctx, taskID, newStatus, templateID); err != nil {
+		return err
+	}
+
+	s.auditLog(ctx, AuditEvent{
+		EventType:  "task_status_changed",
+		TaskID:     taskID,
+		FromStatus: string(currentTask.Status),
+		ToStatus:   string(newStatus),
+		Message:    "Task status transition",
+		Metadata: map[string]any{
+			"template_id": templateID,
+		},
+	})
+
+	return nil
+}
+
+// GetStandardWorkflowSteps returns the standard workflow steps for a template key.
+func (s *WorkflowService) GetStandardWorkflowSteps(templateKey string) []models.WorkflowStep {
+	switch templateKey {
+	case "solicitacao_aquisicao_ti":
+		return []models.WorkflowStep{
+			{StepKey: "collect_data", Name: "Coletar dados", Order: 1},
+			{StepKey: "validate_requirements", Name: "Validar requisitos", Order: 2},
+			{StepKey: "evaluate_rules", Name: "Avaliar regras", Order: 3},
+			{StepKey: "generate_document", Name: "Gerar documento", Order: 4},
+			{StepKey: "review", Name: "Revisão", Order: 5},
+		}
+	case "memorando_interno":
+		return []models.WorkflowStep{
+			{StepKey: "collect_data", Name: "Coletar dados", Order: 1},
+			{StepKey: "validate_requirements", Name: "Validar requisitos", Order: 2},
+			{StepKey: "evaluate_rules", Name: "Avaliar regras", Order: 3},
+			{StepKey: "generate_document", Name: "Gerar documento", Order: 4},
+		}
+	case "relatorio_operacional":
+		return []models.WorkflowStep{
+			{StepKey: "collect_data", Name: "Coletar dados", Order: 1},
+			{StepKey: "validate_requirements", Name: "Validar requisitos", Order: 2},
+			{StepKey: "evaluate_rules", Name: "Avaliar regras", Order: 3},
+			{StepKey: "generate_document", Name: "Gerar documento", Order: 4},
+		}
+	default:
+		return []models.WorkflowStep{
+			{StepKey: "collect_data", Name: "Coletar dados", Order: 1},
+			{StepKey: "validate_requirements", Name: "Validar requisitos", Order: 2},
+			{StepKey: "evaluate_rules", Name: "Avaliar regras", Order: 3},
+			{StepKey: "generate_document", Name: "Gerar documento", Order: 4},
+		}
+	}
+}
+
+// initializeWorkflowSteps creates the standard workflow steps for a task.
+func (s *WorkflowService) initializeWorkflowSteps(ctx context.Context, taskID, templateKey string) error {
+	steps := s.GetStandardWorkflowSteps(templateKey)
+	now := time.Now().UTC().Format(time.RFC3339)
+
+	for i, step := range steps {
+		wfStep := models.WorkflowStep{
+			ID:        "ws-" + uuid.NewString(),
+			TaskID:    taskID,
+			StepKey:   step.StepKey,
+			Name:      step.Name,
+			Status:    "pending",
+			Order:     i + 1,
+			CreatedAt: now,
+		}
+		if i == 0 {
+			wfStep.Status = "in_progress"
+			wfStep.StartedAt = &now
+		}
+		if err := s.repo.CreateWorkflowStep(ctx, wfStep); err != nil {
+			return fmt.Errorf("create workflow step %s: %w", step.StepKey, err)
+		}
+	}
+	return nil
 }
 
 // defaultRules returns the default set of rules for the ABIS system.
@@ -171,11 +282,20 @@ func (s *WorkflowService) CreateTask(ctx context.Context, employeeID, question s
 		return "", fmt.Errorf("create task: %w", err)
 	}
 
+	s.auditLog(ctx, AuditEvent{
+		EventType:   "task_created",
+		TaskID:      taskID,
+		EmployeeID:  employeeID,
+		TemplateKey: classification.TemplateKey,
+		ToStatus:    string(models.StatusDetected),
+		Message:     "Task created from user request",
+	})
+
 	slog.Info("task created", "id", taskID, "intent", classification.Intent, "template_key", classification.TemplateKey)
-	
+
 	// Record metrics
 	metrics.GlobalMetrics.RecordWorkflowTaskCreated()
-	
+
 	return taskID, nil
 }
 
@@ -352,13 +472,23 @@ func (s *WorkflowService) StartProcessing(ctx context.Context, taskID string) (*
 	}
 
 	if task.Intent == models.IntentDocumentGeneration && template.ID != "" {
-		s.repo.UpdateTaskStatus(ctx, taskID, models.StatusCollectingData, template.ID)
+		if err := s.updateTaskStatus(ctx, taskID, models.StatusCollectingData, template.ID); err != nil {
+			return nil, err
+		}
+		// Initialize workflow steps
+		if err := s.initializeWorkflowSteps(ctx, taskID, template.TemplateKey); err != nil {
+			slog.Warn("failed to initialize workflow steps", "error", err.Error())
+		}
 	} else if task.Intent == models.IntentDocumentGeneration {
-		s.repo.UpdateTaskStatus(ctx, taskID, models.StatusBlocked, "")
+		if err := s.updateTaskStatus(ctx, taskID, models.StatusBlocked, ""); err != nil {
+			return nil, err
+		}
 		result.Blocked = true
 		result.Message = "Não foi possível identificar um template aplicável. Consulte os normativos ou entre em contato com a área responsável."
 	} else {
-		s.repo.UpdateTaskStatus(ctx, taskID, models.StatusCompleted, "")
+		if err := s.updateTaskStatus(ctx, taskID, models.StatusCompleted, ""); err != nil {
+			return nil, err
+		}
 		result.Answered = true
 		result.Message = extraction.Summary
 	}
@@ -415,11 +545,84 @@ func (s *WorkflowService) ProcessMessage(ctx context.Context, taskID, message st
 			}, nil
 		}
 
-		s.repo.UpdateTaskStatus(ctx, taskID, models.StatusValidating, task.TemplateID)
+		// Update workflow step: validate_requirements
+		if err := s.updateWorkflowStepStatus(ctx, taskID, "validate_requirements", "in_progress", ""); err != nil {
+			slog.Warn("failed to update workflow step", "step", "validate_requirements", "error", err.Error())
+		}
+
+		s.updateTaskStatus(ctx, taskID, models.StatusValidating, task.TemplateID)
 		return s.ValidateAndProceed(ctx, taskID)
 	}
 
 	return &MessageResult{Answer: message}, nil
+}
+
+func (s *WorkflowService) updateWorkflowStepStatus(ctx context.Context, taskID, stepKey, status, errorMsg string) error {
+	steps, err := s.repo.GetWorkflowStepsByTask(ctx, taskID)
+	if err != nil {
+		return err
+	}
+	for _, step := range steps {
+		if step.StepKey == stepKey {
+			now := time.Now().UTC().Format(time.RFC3339)
+			step.Status = status
+			if status == "in_progress" && step.StartedAt == nil {
+				step.StartedAt = &now
+			}
+			if status == "completed" || status == "failed" {
+				step.CompletedAt = &now
+			}
+			step.Error = errorMsg
+			return s.repo.UpdateWorkflowStep(ctx, step)
+		}
+	}
+	return nil
+}
+
+// GetWorkflowSteps returns the workflow steps for a task.
+func (s *WorkflowService) GetWorkflowSteps(ctx context.Context, taskID string) ([]models.WorkflowStep, error) {
+	return s.repo.GetWorkflowStepsByTask(ctx, taskID)
+}
+
+// GetNextAction returns the next action for a task based on its current status and workflow steps.
+func (s *WorkflowService) GetNextAction(ctx context.Context, taskID string) (string, error) {
+	task, err := s.repo.GetTask(ctx, taskID)
+	if err != nil {
+		return "", err
+	}
+
+	steps, err := s.repo.GetWorkflowStepsByTask(ctx, taskID)
+	if err != nil {
+		return "", err
+	}
+
+	// Find first incomplete step
+	for _, step := range steps {
+		if step.Status == "pending" || step.Status == "in_progress" {
+			return step.StepKey, nil
+		}
+		if step.Status == "failed" {
+			return "retry_" + step.StepKey, nil
+		}
+	}
+
+	// All steps completed, check task status
+	switch task.Status {
+	case models.StatusReadyToGenerate:
+		return "generate_document", nil
+	case models.StatusGenerating:
+		return "waiting_generation", nil
+	case models.StatusGenerated:
+		return "review", nil
+	case models.StatusNeedsReview:
+		return "awaiting_review", nil
+	case models.StatusCompleted:
+		return "completed", nil
+	case models.StatusBlocked:
+		return "blocked", nil
+	default:
+		return "unknown", nil
+	}
 }
 
 // ValidateAndProceed validates the task data and either generates the document or reports issues.
@@ -488,7 +691,7 @@ func (s *WorkflowService) ValidateAndProceed(ctx context.Context, taskID string)
 			Sources:       convertRuleSources(result.Sources),
 			EvaluatedAt:   result.EvaluatedAt,
 		}
-		if err := s.repo.CreateRuleEvaluation(ctx, modelResult); err != nil {
+		if err := s.repo.CreateRuleEvaluation(ctx, taskID, modelResult); err != nil {
 			slog.Warn("failed to persist rule evaluation", "rule_id", result.RuleID, "error", err.Error())
 		}
 	}
@@ -521,7 +724,13 @@ func (s *WorkflowService) ValidateAndProceed(ctx context.Context, taskID string)
 		}, nil
 
 	case rules.StatusNeedsReview:
-		s.repo.UpdateTaskStatus(ctx, taskID, models.StatusNeedsReview, task.TemplateID)
+		// Update workflow step
+		s.updateWorkflowStepStatus(ctx, taskID, "evaluate_rules", "completed", "")
+		s.updateWorkflowStepStatus(ctx, taskID, "review", "in_progress", "")
+
+		if err := s.updateTaskStatus(ctx, taskID, models.StatusNeedsReview, task.TemplateID); err != nil {
+			return nil, err
+		}
 		return &MessageResult{
 			Answer: "Esta solicitação requer revisão manual antes de prosseguir.",
 			ReadyToGenerate: false,
@@ -550,7 +759,10 @@ func (s *WorkflowService) ValidateAndProceed(ctx context.Context, taskID string)
 
 	default:
 		// PASS or default
-		if err := s.repo.UpdateTaskStatus(ctx, taskID, models.StatusReadyToGenerate, task.TemplateID); err != nil {
+		// Update workflow step
+		s.updateWorkflowStepStatus(ctx, taskID, "evaluate_rules", "completed", "")
+
+		if err := s.updateTaskStatus(ctx, taskID, models.StatusReadyToGenerate, task.TemplateID); err != nil {
 			return nil, err
 		}
 		return &MessageResult{
@@ -562,9 +774,46 @@ func (s *WorkflowService) ValidateAndProceed(ctx context.Context, taskID string)
 
 // GenerateDocument generates DOCX and PDF from the template.
 func (s *WorkflowService) GenerateDocument(ctx context.Context, taskID string) (*models.DocumentRun, error) {
-	run, err := s.docGenerator.Generate(ctx, taskID)
+	// Idempotency check: see if a document run already exists for this task
+	existingRun, err := s.repo.GetDocumentRunByTask(ctx, taskID)
+	if err == nil && existingRun.ID != "" {
+		slog.Info("document already generated for task, returning existing", "task_id", taskID, "run_id", existingRun.ID)
+		return &existingRun, nil
+	}
+
+	// Get current task to verify status
+	currentTask, err := s.repo.GetTask(ctx, taskID)
 	if err != nil {
 		return nil, err
+	}
+	slog.Info("GenerateDocument starting", "task_id", taskID, "current_status", currentTask.Status)
+
+	// Update workflow step: generate_document
+	if err := s.updateWorkflowStepStatus(ctx, taskID, "generate_document", "in_progress", ""); err != nil {
+		slog.Warn("failed to update workflow step", "error", err.Error())
+	}
+
+	// Transition to generating state
+	if err := s.updateTaskStatus(ctx, taskID, models.StatusGenerating, ""); err != nil {
+		slog.Error("failed to transition to generating", "error", err.Error(), "current_status", currentTask.Status)
+		return nil, fmt.Errorf("failed to transition to generating: %w", err)
+	}
+
+	run, err := s.docGenerator.Generate(ctx, taskID)
+	if err != nil {
+		s.updateWorkflowStepStatus(ctx, taskID, "generate_document", "failed", err.Error())
+		s.updateTaskStatus(ctx, taskID, models.StatusBlocked, "")
+		return nil, err
+	}
+
+	// Generator already updates status to Generated on success
+	// Update workflow steps
+	if err := s.updateWorkflowStepStatus(ctx, taskID, "generate_document", "completed", ""); err != nil {
+		slog.Warn("failed to update workflow step", "error", err.Error())
+	}
+
+	if err := s.updateWorkflowStepStatus(ctx, taskID, "review", "in_progress", ""); err != nil {
+		slog.Warn("failed to update workflow step", "error", err.Error())
 	}
 
 	return run, nil

@@ -98,9 +98,15 @@ type MetricsRegistry struct {
 	ChatLatency            *Histogram
 
 	// Workflow metrics
-	WorkflowTasksTotal     *Counter
-	WorkflowCompletedTotal *Counter
-	WorkflowFailedTotal    *Counter
+	WorkflowTasksTotal           *Counter
+	WorkflowCompletedTotal       *Counter
+	WorkflowFailedTotal          *Counter
+	WorkflowStateTransitions     *Counter
+	WorkflowStepStarted          *Counter
+	WorkflowStepCompleted        *Counter
+	WorkflowStepFailed           *Counter
+	WorkflowNextActionRequested  *Counter
+	WorkflowIdempotentHit        *Counter
 
 	// Rule engine metrics
 	RuleEvaluationsTotal   *Counter
@@ -144,9 +150,15 @@ func NewMetricsRegistry() *MetricsRegistry {
 		ChatErrorsTotal:          &Counter{},
 		ChatLatency:              NewHistogram(nil),
 
-		WorkflowTasksTotal:     &Counter{},
-		WorkflowCompletedTotal: &Counter{},
-		WorkflowFailedTotal:    &Counter{},
+		WorkflowTasksTotal:           &Counter{},
+		WorkflowCompletedTotal:       &Counter{},
+		WorkflowFailedTotal:          &Counter{},
+		WorkflowStateTransitions:     &Counter{},
+		WorkflowStepStarted:          &Counter{},
+		WorkflowStepCompleted:        &Counter{},
+		WorkflowStepFailed:           &Counter{},
+		WorkflowNextActionRequested:  &Counter{},
+		WorkflowIdempotentHit:        &Counter{},
 
 		RuleEvaluationsTotal:   &Counter{},
 		RuleFailuresTotal:      &Counter{},
@@ -201,6 +213,36 @@ func (m *MetricsRegistry) RecordWorkflowCompleted() {
 // RecordWorkflowFailed increments workflow failed counter.
 func (m *MetricsRegistry) RecordWorkflowFailed() {
 	m.WorkflowFailedTotal.Inc()
+}
+
+// RecordWorkflowStateTransition records a workflow state transition.
+func (m *MetricsRegistry) RecordWorkflowStateTransition(from, to string) {
+	m.WorkflowStateTransitions.Inc()
+}
+
+// RecordWorkflowStepStarted records a workflow step start.
+func (m *MetricsRegistry) RecordWorkflowStepStarted() {
+	m.WorkflowStepStarted.Inc()
+}
+
+// RecordWorkflowStepCompleted records a workflow step completion.
+func (m *MetricsRegistry) RecordWorkflowStepCompleted() {
+	m.WorkflowStepCompleted.Inc()
+}
+
+// RecordWorkflowStepFailed records a workflow step failure.
+func (m *MetricsRegistry) RecordWorkflowStepFailed() {
+	m.WorkflowStepFailed.Inc()
+}
+
+// RecordWorkflowNextActionRequested records a next action request.
+func (m *MetricsRegistry) RecordWorkflowNextActionRequested() {
+	m.WorkflowNextActionRequested.Inc()
+}
+
+// RecordWorkflowIdempotentHit records an idempotent document generation hit.
+func (m *MetricsRegistry) RecordWorkflowIdempotentHit() {
+	m.WorkflowIdempotentHit.Inc()
 }
 
 // RecordRuleEvaluation records a rule evaluation.
@@ -279,30 +321,36 @@ func (m *MetricsRegistry) Snapshot() map[string]interface{} {
 	defer m.mu.RUnlock()
 
 	return map[string]interface{}{
-		"chat_requests_total":         m.ChatRequestsTotal.Get(),
-		"chat_errors_total":           m.ChatErrorsTotal.Get(),
-		"chat_latency_avg_us":         m.ChatLatency.Sum() / float64(max(1, m.ChatLatency.Count())),
-		"workflow_tasks_total":        m.WorkflowTasksTotal.Get(),
-		"workflow_completed_total":    m.WorkflowCompletedTotal.Get(),
-		"workflow_failed_total":       m.WorkflowFailedTotal.Get(),
-		"rule_evaluations_total":      m.RuleEvaluationsTotal.Get(),
-		"rule_failures_total":         m.RuleFailuresTotal.Get(),
-		"rule_reviews_total":          m.RuleReviewsTotal.Get(),
-		"rule_insufficient_total":     m.RuleInsufficientTotal.Get(),
-		"documents_generated_total":   m.DocumentsGeneratedTotal.Get(),
-		"document_generation_errors":  m.DocumentGenerationErrors.Get(),
-		"doc_engine_requests_total":   m.DocEngineRequestsTotal.Get(),
-		"doc_engine_success_total":    m.DocEngineSuccessTotal.Get(),
-		"doc_engine_errors_total":     m.DocEngineErrorsTotal.Get(),
-		"doc_engine_timeouts_total":   m.DocEngineTimeoutsTotal.Get(),
-		"doc_engine_fallbacks_total":  m.DocEngineFallbacksTotal.Get(),
-		"rag_searches_total":          m.RagSearchesTotal.Get(),
-		"rag_zero_result_total":       m.RagZeroResultTotal.Get(),
-		"rule_engine_evaluations":     m.RuleEngineEvaluationsTotal.Get(),
-		"rule_engine_pass_total":      m.RuleEnginePassTotal.Get(),
-		"rule_engine_fail_total":      m.RuleEngineFailTotal.Get(),
-		"rule_engine_review_total":    m.RuleEngineReviewTotal.Get(),
-		"rule_engine_insufficient":    m.RuleEngineInsufficientTotal.Get(),
+		"chat_requests_total":            m.ChatRequestsTotal.Get(),
+		"chat_errors_total":              m.ChatErrorsTotal.Get(),
+		"chat_latency_avg_us":            m.ChatLatency.Sum() / float64(max(1, m.ChatLatency.Count())),
+		"workflow_tasks_total":           m.WorkflowTasksTotal.Get(),
+		"workflow_completed_total":       m.WorkflowCompletedTotal.Get(),
+		"workflow_failed_total":          m.WorkflowFailedTotal.Get(),
+		"workflow_state_transitions":     m.WorkflowStateTransitions.Get(),
+		"workflow_step_started":          m.WorkflowStepStarted.Get(),
+		"workflow_step_completed":        m.WorkflowStepCompleted.Get(),
+		"workflow_step_failed":           m.WorkflowStepFailed.Get(),
+		"workflow_next_action_requested": m.WorkflowNextActionRequested.Get(),
+		"workflow_idempotent_hit":        m.WorkflowIdempotentHit.Get(),
+		"rule_evaluations_total":         m.RuleEvaluationsTotal.Get(),
+		"rule_failures_total":            m.RuleFailuresTotal.Get(),
+		"rule_reviews_total":             m.RuleReviewsTotal.Get(),
+		"rule_insufficient_total":        m.RuleInsufficientTotal.Get(),
+		"documents_generated_total":      m.DocumentsGeneratedTotal.Get(),
+		"document_generation_errors":     m.DocumentGenerationErrors.Get(),
+		"doc_engine_requests_total":      m.DocEngineRequestsTotal.Get(),
+		"doc_engine_success_total":       m.DocEngineSuccessTotal.Get(),
+		"doc_engine_errors_total":        m.DocEngineErrorsTotal.Get(),
+		"doc_engine_timeouts_total":      m.DocEngineTimeoutsTotal.Get(),
+		"doc_engine_fallbacks_total":     m.DocEngineFallbacksTotal.Get(),
+		"rag_searches_total":             m.RagSearchesTotal.Get(),
+		"rag_zero_result_total":          m.RagZeroResultTotal.Get(),
+		"rule_engine_evaluations":        m.RuleEngineEvaluationsTotal.Get(),
+		"rule_engine_pass_total":         m.RuleEnginePassTotal.Get(),
+		"rule_engine_fail_total":         m.RuleEngineFailTotal.Get(),
+		"rule_engine_review_total":       m.RuleEngineReviewTotal.Get(),
+		"rule_engine_insufficient":       m.RuleEngineInsufficientTotal.Get(),
 	}
 }
 

@@ -60,16 +60,28 @@ func (r *WorkflowRepo) GetTask(ctx context.Context, id string) (models.WorkflowT
 	return t, nil
 }
 
-// UpdateTaskStatus updates the status and template_id of a task.
+// UpdateTaskStatus updates the status and optionally the template_id of a task.
 func (r *WorkflowRepo) UpdateTaskStatus(ctx context.Context, id string, status models.TaskStatus, templateID string) error {
 	fmt.Printf("[REPO] UpdateTaskStatus taskID=%s status=%s templateID=%s\n", id, status, templateID)
-	_, err := r.db.ExecContext(ctx, `
-		UPDATE workflow_tasks SET status = ?, template_id = ?, updated_at = datetime('now')
-		WHERE id = ?
-	`, status, templateID, id)
-	if err != nil {
-		fmt.Printf("[REPO] UpdateTaskStatus erro: %v\n", err)
-		return err
+	
+	if templateID != "" {
+		_, err := r.db.ExecContext(ctx, `
+			UPDATE workflow_tasks SET status = ?, template_id = ?, updated_at = datetime('now')
+			WHERE id = ?
+		`, status, templateID, id)
+		if err != nil {
+			fmt.Printf("[REPO] UpdateTaskStatus erro: %v\n", err)
+			return err
+		}
+	} else {
+		_, err := r.db.ExecContext(ctx, `
+			UPDATE workflow_tasks SET status = ?, updated_at = datetime('now')
+			WHERE id = ?
+		`, status, id)
+		if err != nil {
+			fmt.Printf("[REPO] UpdateTaskStatus erro: %v\n", err)
+			return err
+		}
 	}
 	fmt.Printf("[REPO] UpdateTaskStatus sucesso taskID=%s\n", id)
 	return nil
@@ -460,6 +472,35 @@ func (r *WorkflowRepo) GetDocumentRun(ctx context.Context, id string) (models.Do
 	return r_, nil
 }
 
+// GetDocumentRunByTask retrieves a document run by task ID.
+func (r *WorkflowRepo) GetDocumentRunByTask(ctx context.Context, taskID string) (models.DocumentRun, error) {
+	fmt.Printf("[REPO] GetDocumentRunByTask taskID=%s\n", taskID)
+	var r_ models.DocumentRun
+	var docxPath, pdfPath sql.NullString
+	err := r.db.QueryRowContext(ctx, `
+		SELECT id, task_id, employee_id, template_id, template_version, status, docx_path, pdf_path, created_at, updated_at
+		FROM document_runs WHERE task_id = ?
+	`, taskID).Scan(
+		&r_.ID, &r_.TaskID, &r_.EmployeeID, &r_.TemplateID, &r_.TemplateVersion,
+		&r_.Status, &docxPath, &pdfPath, &r_.CreatedAt, &r_.UpdatedAt,
+	)
+	if docxPath.Valid {
+		r_.DocxPath = docxPath.String
+	}
+	if pdfPath.Valid {
+		r_.PdfPath = pdfPath.String
+	}
+	if err != nil {
+		if err == sql.ErrNoRows {
+			return r_, err
+		}
+		fmt.Printf("[REPO] GetDocumentRunByTask erro: %v\n", err)
+		return r_, err
+	}
+	fmt.Printf("[REPO] GetDocumentRunByTask sucesso runID=%s status=%s\n", r_.ID, r_.Status)
+	return r_, nil
+}
+
 // CreateDocumentSource records a source used in a document run.
 func (r *WorkflowRepo) CreateDocumentSource(ctx context.Context, ds models.DocumentSource) error {
 	fmt.Printf("[REPO] CreateDocumentSource dsID=%s runID=%s requirement=%s\n", ds.ID, ds.DocumentRunID, ds.Requirement)
@@ -618,14 +659,14 @@ func IntToString(i int) string {
 // --- Rule Evaluations ---
 
 // CreateRuleEvaluation records a rule evaluation result.
-func (r *WorkflowRepo) CreateRuleEvaluation(ctx context.Context, eval models.RuleEvaluationResult) error {
-	fmt.Printf("[REPO] CreateRuleEvaluation taskID=%s ruleID=%s status=%s\n", eval.RuleID, eval.RuleID, eval.Status)
+func (r *WorkflowRepo) CreateRuleEvaluation(ctx context.Context, taskID string, eval models.RuleEvaluationResult) error {
+	fmt.Printf("[REPO] CreateRuleEvaluation taskID=%s ruleID=%s status=%s\n", taskID, eval.RuleID, eval.Status)
 	_, err := r.db.ExecContext(ctx, `
-		INSERT INTO workflow_rule_evaluations (id, task_id, rule_id, rule_name, status, message, input_field, input_value, expected_value, actual_value, sources_json)
-		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-	`, eval.RuleID, eval.RuleID, eval.RuleName, eval.Status, eval.Message,
+		INSERT INTO workflow_rule_evaluations (id, task_id, rule_id, rule_name, status, message, input_field, input_value, expected_value, actual_value, sources_json, evaluated_at)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, datetime('now'))
+	`, eval.RuleID, taskID, eval.RuleID, eval.RuleName, eval.Status, eval.Message,
 		eval.Input.FieldName, eval.Input.Value, eval.ExpectedValue, eval.ActualValue,
-		"[]") // sources_json - simplified for now
+		"[]")
 	if err != nil {
 		fmt.Printf("[REPO] CreateRuleEvaluation erro: %v\n", err)
 		return err
@@ -671,3 +712,76 @@ func (r *WorkflowRepo) GetRuleEvaluationsByTask(ctx context.Context, taskID stri
 	fmt.Printf("[REPO] GetRuleEvaluationsByTask sucesso taskID=%s count=%d\n", taskID, len(result))
 	return result, rows.Err()
 }
+
+// --- Workflow Steps ---
+
+// CreateWorkflowStep creates a new workflow step.
+func (r *WorkflowRepo) CreateWorkflowStep(ctx context.Context, step models.WorkflowStep) error {
+	fmt.Printf("[REPO] CreateWorkflowStep stepID=%s taskID=%s stepKey=%s\n", step.ID, step.TaskID, step.StepKey)
+	_, err := r.db.ExecContext(ctx, `
+		INSERT INTO workflow_steps (id, task_id, step_key, name, status, step_order, started_at, completed_at, error)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+	`, step.ID, step.TaskID, step.StepKey, step.Name, step.Status, step.Order, step.StartedAt, step.CompletedAt, step.Error)
+	if err != nil {
+		fmt.Printf("[REPO] CreateWorkflowStep erro: %v\n", err)
+		return err
+	}
+	fmt.Printf("[REPO] CreateWorkflowStep sucesso stepID=%s\n", step.ID)
+	return nil
+}
+
+// UpdateWorkflowStep updates a workflow step.
+func (r *WorkflowRepo) UpdateWorkflowStep(ctx context.Context, step models.WorkflowStep) error {
+	fmt.Printf("[REPO] UpdateWorkflowStep stepID=%s taskID=%s stepKey=%s status=%s\n", step.ID, step.TaskID, step.StepKey, step.Status)
+	_, err := r.db.ExecContext(ctx, `
+		UPDATE workflow_steps SET status = ?, started_at = ?, completed_at = ?, error = ? WHERE id = ?
+	`, step.Status, step.StartedAt, step.CompletedAt, step.Error, step.ID)
+	if err != nil {
+		fmt.Printf("[REPO] UpdateWorkflowStep erro: %v\n", err)
+		return err
+	}
+	fmt.Printf("[REPO] UpdateWorkflowStep sucesso stepID=%s\n", step.ID)
+	return nil
+}
+
+// GetWorkflowStepsByTask returns all steps for a task ordered by step_order.
+func (r *WorkflowRepo) GetWorkflowStepsByTask(ctx context.Context, taskID string) ([]models.WorkflowStep, error) {
+	fmt.Printf("[REPO] GetWorkflowStepsByTask taskID=%s\n", taskID)
+	rows, err := r.db.QueryContext(ctx, `
+		SELECT id, task_id, step_key, name, status, step_order, started_at, completed_at, error, created_at
+		FROM workflow_steps WHERE task_id = ? ORDER BY step_order
+	`, taskID)
+	if err != nil {
+		fmt.Printf("[REPO] GetWorkflowStepsByTask erro: %v\n", err)
+		return nil, err
+	}
+	defer rows.Close()
+
+	var result []models.WorkflowStep
+	for rows.Next() {
+		var step models.WorkflowStep
+		var startedAt, completedAt, errorMsg sql.NullString
+		err := rows.Scan(
+			&step.ID, &step.TaskID, &step.StepKey, &step.Name, &step.Status,
+			&step.Order, &startedAt, &completedAt, &errorMsg, &step.CreatedAt,
+		)
+		if err != nil {
+			fmt.Printf("[REPO] GetWorkflowStepsByTask erro scan: %v\n", err)
+			return nil, err
+		}
+		if startedAt.Valid {
+			step.StartedAt = &startedAt.String
+		}
+		if completedAt.Valid {
+			step.CompletedAt = &completedAt.String
+		}
+		if errorMsg.Valid {
+			step.Error = errorMsg.String
+		}
+		result = append(result, step)
+	}
+	fmt.Printf("[REPO] GetWorkflowStepsByTask sucesso taskID=%s count=%d\n", taskID, len(result))
+	return result, rows.Err()
+}
+
+// IntToString is a helper for converting.

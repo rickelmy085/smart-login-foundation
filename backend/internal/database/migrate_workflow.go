@@ -95,6 +95,19 @@ func MigrateWorkflow(ctx context.Context, db *sql.DB) error {
 			created_at TEXT NOT NULL DEFAULT (datetime('now'))
 		);`,
 
+		`CREATE TABLE IF NOT EXISTS workflow_steps (
+			id TEXT PRIMARY KEY,
+			task_id TEXT NOT NULL REFERENCES workflow_tasks(id) ON DELETE CASCADE,
+			step_key TEXT NOT NULL,
+			name TEXT NOT NULL,
+			status TEXT NOT NULL DEFAULT 'pending',
+			step_order INTEGER NOT NULL DEFAULT 0,
+			started_at TEXT,
+			completed_at TEXT,
+			error TEXT,
+			created_at TEXT NOT NULL DEFAULT (datetime('now'))
+		);`,
+
 		`CREATE TABLE IF NOT EXISTS workflow_rule_evaluations (
 			id TEXT PRIMARY KEY,
 			task_id TEXT NOT NULL REFERENCES workflow_tasks(id) ON DELETE CASCADE,
@@ -106,7 +119,7 @@ func MigrateWorkflow(ctx context.Context, db *sql.DB) error {
 			input_value TEXT,
 			expected_value TEXT,
 			actual_value TEXT,
-			sources_json TEXT,
+			sources_json TEXT NOT NULL DEFAULT '[]',
 			evaluated_at TEXT NOT NULL DEFAULT (datetime('now'))
 		);`,
 
@@ -116,6 +129,7 @@ func MigrateWorkflow(ctx context.Context, db *sql.DB) error {
 		`CREATE INDEX IF NOT EXISTS idx_document_runs_task ON document_runs(task_id);`,
 		`CREATE INDEX IF NOT EXISTS idx_document_sources_run ON document_sources(document_run_id);`,
 		`CREATE INDEX IF NOT EXISTS idx_template_fields_template ON template_fields(template_id);`,
+		`CREATE INDEX IF NOT EXISTS idx_workflow_steps_task ON workflow_steps(task_id);`,
 
 		`DROP VIEW IF EXISTS history_view;`,
 		`CREATE VIEW history_view AS

@@ -10,6 +10,7 @@ import (
 	"os"
 	"time"
 
+	"github.com/bsmart/abis/internal/agent"
 	"github.com/bsmart/abis/internal/chat"
 	"github.com/bsmart/abis/internal/config"
 	"github.com/bsmart/abis/internal/database"
@@ -21,6 +22,8 @@ import (
 	"github.com/bsmart/abis/internal/middleware"
 	"github.com/bsmart/abis/internal/repository"
 	"github.com/bsmart/abis/internal/service"
+	"github.com/bsmart/abis/internal/service/intent"
+	"github.com/bsmart/abis/internal/service/requirements"
 	"github.com/bsmart/abis/internal/web"
 )
 
@@ -70,7 +73,12 @@ func main() {
 	groqClient := groq.New(cfg.GroqAPIKey, cfg.GroqModel)
 	searcher := knowledge.NewSearcher(db)
 	webClient := web.NewClient()
-	chatService := chat.NewService(searcher, groqClient, webClient)
+
+	// Intent classifier and requirements extractor
+	intentClassifier := intent.NewClassifier(groqClient)
+	requirementsExtractor := requirements.NewExtractor(groqClient)
+
+	chatService := chat.NewService(searcher, groqClient, webClient, intentClassifier, requirementsExtractor)
 	workflowService := service.NewWorkflowService(workflowRepo, searcher, groqClient)
 
 	// Configure Document Engine if enabled
@@ -92,6 +100,10 @@ func main() {
 	chatHandler := handler.NewChatHandler(chatService, workflowService, employeeRepo, chatRepo)
 	knowledgeHandler := handler.NewKnowledgeHandler(searcher)
 	workflowHandler := handler.NewWorkflowHandler(workflowService, workflowRepo)
+
+	// Agent service
+	agentService := agent.NewAgentService(groqClient, searcher, chatService.IntentClassifier(), chatService.RequirementsExtractor(), workflowService)
+	agentHandler := agent.NewAgentHandler(agentService)
 
 	mux := http.NewServeMux()
 	mux.HandleFunc("/api/health", func(w http.ResponseWriter, r *http.Request) {
@@ -130,6 +142,15 @@ func main() {
 	mux.Handle("/api/documents/{id}/docx", middleware.AuthMiddleware(authService)(http.HandlerFunc(workflowHandler.DownloadDocx)))
 	mux.Handle("/api/documents/{id}/pdf", middleware.AuthMiddleware(authService)(http.HandlerFunc(workflowHandler.DownloadPdf)))
 	mux.Handle("/api/history", middleware.AuthMiddleware(authService)(http.HandlerFunc(workflowHandler.ListHistory)))
+
+	// Agent routes
+	mux.Handle("/api/agent/process", middleware.AuthMiddleware(authService)(http.HandlerFunc(agentHandler.Process)))
+	mux.Handle("/api/agent/status/", middleware.AuthMiddleware(authService)(http.HandlerFunc(agentHandler.GetStatus)))
+	mux.Handle("/api/agent/tools", middleware.AuthMiddleware(authService)(http.HandlerFunc(agentHandler.ListTools)))
+	mux.Handle("/api/agent/tools/", middleware.AuthMiddleware(authService)(http.HandlerFunc(agentHandler.GetToolSchema)))
+	mux.Handle("/api/agent/resume", middleware.AuthMiddleware(authService)(http.HandlerFunc(agentHandler.Resume)))
+	mux.Handle("/api/agent/human-input", middleware.AuthMiddleware(authService)(http.HandlerFunc(agentHandler.HumanInput)))
+
 	fmt.Println("[MAIN] Rotas registradas")
 
 	addr := ":" + cfg.Port

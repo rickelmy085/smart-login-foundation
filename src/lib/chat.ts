@@ -7,6 +7,10 @@ import type {
   MessageResult,
   DocumentRunResponse,
   HistoryResponse,
+  AgentResponse,
+  AgentPlan,
+  AgentToolResult,
+  AgentTrace,
 } from "@/lib/types";
 import {
   sendQuestion,
@@ -17,6 +21,12 @@ import {
   sendTaskMessage,
   generateDocument,
   listHistory,
+  agentProcess,
+  agentResume,
+  agentHumanInput,
+  getAgentStatus,
+  listAgentTools,
+  getAgentToolSchema,
 } from "@/lib/api-client";
 
 // Re-export types for backward compatibility
@@ -29,6 +39,10 @@ export type {
   MessageResult,
   DocumentRunResponse,
   HistoryResponse,
+  AgentResponse,
+  AgentPlan,
+  AgentToolResult,
+  AgentTrace,
 };
 
 // Re-export API functions for backward compatibility
@@ -41,4 +55,10 @@ export {
   sendTaskMessage,
   generateDocument,
   listHistory,
+  agentProcess,
+  agentResume,
+  agentHumanInput,
+  getAgentStatus,
+  listAgentTools,
+  getAgentToolSchema,
 };

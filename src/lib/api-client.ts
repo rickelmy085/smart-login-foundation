@@ -17,7 +17,60 @@ import type {
   DocumentListResponse,
   DocumentSourcesResponse,
   HistoryResponse,
+  WorkflowStepsResponse,
+  NextActionResponse,
+  AgentResponse,
+  AgentPlan,
+  AgentToolResult,
 } from "@/lib/types";
+
+// ---------- Agent API ----------
+
+export async function agentProcess(request: {
+  goal: string;
+  context?: Record<string, any>;
+  task_id?: string;
+  resume_plan_id?: string;
+  human_input?: string;
+}): Promise<AgentResponse> {
+  const res = await apiFetch("/api/agent/process", {
+    method: "POST",
+    body: JSON.stringify(request),
+  });
+  return (await res.json()) as AgentResponse;
+}
+
+export async function getAgentStatus(planId: string): Promise<AgentResponse> {
+  const res = await apiFetch(`/api/agent/status/${planId}`, { method: "GET" });
+  return (await res.json()) as AgentResponse;
+}
+
+export async function listAgentTools(): Promise<string[]> {
+  const res = await apiFetch("/api/agent/tools", { method: "GET" });
+  const data = await res.json();
+  return data.tools;
+}
+
+export async function getAgentToolSchema(toolName: string): Promise<Record<string, any>> {
+  const res = await apiFetch(`/api/agent/tools/${toolName}`, { method: "GET" });
+  return (await res.json()) as Record<string, any>;
+}
+
+export async function agentResume(planId: string): Promise<AgentResponse> {
+  const res = await apiFetch("/api/agent/resume", {
+    method: "POST",
+    body: JSON.stringify({ plan_id: planId }),
+  });
+  return (await res.json()) as AgentResponse;
+}
+
+export async function agentHumanInput(planId: string, response: string): Promise<AgentResponse> {
+  const res = await apiFetch("/api/agent/human-input", {
+    method: "POST",
+    body: JSON.stringify({ plan_id: planId, response }),
+  });
+  return (await res.json()) as AgentResponse;
+}
 
 // ---------- Task/Workflow API ----------
 
@@ -102,6 +155,18 @@ export async function getTaskSources(taskId: string): Promise<{
       source: string;
     }>;
   };
+}
+
+// ---------- Workflow Steps API ----------
+
+export async function getWorkflowSteps(taskId: string): Promise<WorkflowStepsResponse> {
+  const res = await apiFetch(`/api/tasks/${taskId}/steps`, { method: "GET" });
+  return (await res.json()) as WorkflowStepsResponse;
+}
+
+export async function getNextAction(taskId: string): Promise<NextActionResponse> {
+  const res = await apiFetch(`/api/tasks/${taskId}/next-action`, { method: "GET" });
+  return (await res.json()) as NextActionResponse;
 }
 
 // ---------- Document API ----------

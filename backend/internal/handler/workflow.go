@@ -750,6 +750,93 @@ func buildTemplateResponse(tmpl models.DocumentTemplate, fields []models.Templat
 	}
 }
 
+// GET /api/tasks/{id}/steps
+func (h *WorkflowHandler) GetWorkflowSteps(w http.ResponseWriter, r *http.Request) {
+	taskID := r.PathValue("id")
+	fmt.Printf("[WORKFLOW] GetWorkflowSteps taskID=%s\n", taskID)
+	if taskID == "" {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "task id is required"})
+		return
+	}
+
+	employeeID := r.Context().Value("employee_id").(string)
+	task, err := h.svc.GetTask(r.Context(), taskID)
+	if err != nil {
+		if err == service.ErrTaskNotFound {
+			writeJSON(w, http.StatusNotFound, map[string]string{"error": "task not found"})
+			return
+		}
+		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": err.Error()})
+		return
+	}
+	if task.Task.EmployeeID != employeeID {
+		writeJSON(w, http.StatusNotFound, map[string]string{"error": "task not found"})
+		return
+	}
+
+	steps, err := h.svc.GetWorkflowSteps(r.Context(), taskID)
+	if err != nil {
+		fmt.Printf("[WORKFLOW] GetWorkflowSteps erro: %v\n", err)
+		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": err.Error()})
+		return
+	}
+
+	fmt.Printf("[WORKFLOW] GetWorkflowSteps sucesso taskID=%s count=%d\n", taskID, len(steps))
+
+	stepResponses := make([]map[string]any, 0, len(steps))
+	for _, step := range steps {
+		stepResponses = append(stepResponses, map[string]any{
+			"id":           step.ID,
+			"taskId":       step.TaskID,
+			"stepKey":      step.StepKey,
+			"name":         step.Name,
+			"status":       step.Status,
+			"order":        step.Order,
+			"startedAt":    step.StartedAt,
+			"completedAt":  step.CompletedAt,
+			"error":        step.Error,
+			"createdAt":    step.CreatedAt,
+		})
+	}
+
+	writeJSON(w, http.StatusOK, map[string]any{"steps": stepResponses})
+}
+
+// GET /api/tasks/{id}/next-action
+func (h *WorkflowHandler) GetNextAction(w http.ResponseWriter, r *http.Request) {
+	taskID := r.PathValue("id")
+	fmt.Printf("[WORKFLOW] GetNextAction taskID=%s\n", taskID)
+	if taskID == "" {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "task id is required"})
+		return
+	}
+
+	employeeID := r.Context().Value("employee_id").(string)
+	task, err := h.svc.GetTask(r.Context(), taskID)
+	if err != nil {
+		if err == service.ErrTaskNotFound {
+			writeJSON(w, http.StatusNotFound, map[string]string{"error": "task not found"})
+			return
+		}
+		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": err.Error()})
+		return
+	}
+	if task.Task.EmployeeID != employeeID {
+		writeJSON(w, http.StatusNotFound, map[string]string{"error": "task not found"})
+		return
+	}
+
+	nextAction, err := h.svc.GetNextAction(r.Context(), taskID)
+	if err != nil {
+		fmt.Printf("[WORKFLOW] GetNextAction erro: %v\n", err)
+		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": err.Error()})
+		return
+	}
+
+	fmt.Printf("[WORKFLOW] GetNextAction sucesso taskID=%s nextAction=%s\n", taskID, nextAction)
+	writeJSON(w, http.StatusOK, map[string]string{"nextAction": nextAction})
+}
+
 // GET /api/history
 func (h *WorkflowHandler) ListHistory(w http.ResponseWriter, r *http.Request) {
 	employeeID := r.Context().Value("employee_id").(string)
