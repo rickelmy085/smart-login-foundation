@@ -210,50 +210,16 @@ function AbisPage() {
 
       if (data.status === "awaiting_human" && data.human_question) {
         setPendingHumanQuestion(data.human_question);
-        setMessages((prev) => [
-          ...prev,
-          {
-            id: uuid(),
-            role: "assistant",
-            content: data.message,
-            agentTrace: buildTrace(question, data, "awaiting_human"),
-          },
-        ]);
+        appendAssistantMessage(data, "awaiting_human");
         setHumanInputOpen(true);
         setAgentState("awaiting_human");
-      } else if (data.status === "completed") {
-        const isNoEvidence = /normativos dispon.i?veis n.?o trazem informa.?.?o suficiente/i.test(
-          data.message,
-        );
-        setMessages((prev) => [
-          ...prev,
-          {
-            id: uuid(),
-            role: "assistant",
-            content: data.message,
-            sources: data.results?.flatMap((r: any) => r.output?.sources ?? []) ?? [],
-            documentRunId: data.results?.find((r: any) => r.tool === "generate_document")?.output
-              ?.document_run_id,
-            documentDocxUrl: data.results?.find((r: any) => r.tool === "generate_document")?.output
-              ?.docx_url,
-            documentPdfUrl: data.results?.find((r: any) => r.tool === "generate_document")?.output
-              ?.pdf_url,
-            error: isNoEvidence ? "no_evidence" : undefined,
-            agentTrace: buildTrace(question, data, "completed"),
-          },
-        ]);
-      } else if (data.status === "failed") {
-        setMessages((prev) => [
-          ...prev,
-          {
-            id: uuid(),
-            role: "assistant",
-            content: data.message,
-            error: data.error || "Falha ao executar a tarefa.",
-          },
-        ]);
-      } else {
+      } else if (data.status === "completed" || data.status === "failed") {
+        appendAssistantMessage(data, data.status);
         setAgentState(data.status);
+      } else {
+        // Execução assíncrona ainda em andamento ("running"): entrega ao polling.
+        handedOffToPolling = true;
+        setAgentState("executing");
       }
     } catch (err) {
       const message = err instanceof Error ? err.message : "Erro ao consultar o assistente.";
@@ -269,8 +235,10 @@ function AbisPage() {
       ]);
       toast.error(message);
     } finally {
-      setLoading(false);
-      setAgentState((s) => (s === "awaiting_human" ? s : "idle"));
+      if (!handedOffToPolling) {
+        setLoading(false);
+        setAgentState((s) => (s === "awaiting_human" || s === "completed" || s === "failed" ? s : "idle"));
+      }
     }
   }
 
