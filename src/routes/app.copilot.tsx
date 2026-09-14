@@ -135,28 +135,27 @@ function AbisPage() {
     const isNoEvidence = /normativos dispon.i?veis n.?o trazem informa.?.?o suficiente/i.test(
       data.message ?? "",
     );
-    setMessages((prev) => [
-      ...prev,
-      {
-        id: uuid(),
-        role: "assistant",
-        content: status === "failed" ? data.message || "Falha ao executar a tarefa." : extractAnswer(data),
-        sources: data.results?.flatMap((r: any) => r.output?.sources ?? []) ?? [],
-        documentRunId: data.results?.find((r: any) => r.tool === "generate_document")?.output
-          ?.document_run_id,
-        documentDocxUrl: data.results?.find((r: any) => r.tool === "generate_document")?.output
-          ?.docx_url,
-        documentPdfUrl: data.results?.find((r: any) => r.tool === "generate_document")?.output
-          ?.pdf_url,
-        error:
-          status === "failed"
-            ? data.error || "Falha ao executar a tarefa."
-            : isNoEvidence
-              ? "no_evidence"
-              : undefined,
-        agentTrace: buildTrace(goal, data, status),
-      },
-    ]);
+    const baseMessage = {
+      id: uuid(),
+      role: "assistant" as const,
+      content: status === "failed" ? data.message || "Falha ao executar a tarefa." : extractAnswer(data),
+      sources: data.results?.flatMap((r: any) => r.output?.sources ?? []) ?? [],
+      documentRunId: data.results?.find((r: any) => r.tool === "generate_document")?.output
+        ?.document_run_id,
+      documentDocxUrl: data.results?.find((r: any) => r.tool === "generate_document")?.output
+        ?.docx_url,
+      documentPdfUrl: data.results?.find((r: any) => r.tool === "generate_document")?.output
+        ?.pdf_url,
+      agentTrace: buildTrace(goal, data, status),
+    };
+
+    const messageWithError = status === "failed"
+      ? { ...baseMessage, error: data.error || "Falha ao executar a tarefa." }
+      : isNoEvidence
+        ? { ...baseMessage, error: "no_evidence" as const }
+        : baseMessage;
+
+    setMessages((prev) => [...prev, messageWithError]);
   }
 
   async function submit(e?: React.FormEvent) {
@@ -688,8 +687,8 @@ function MessageBubble({ message }: { message: ChatMessage }) {
         {!isUser && message.documentRunId && (
           <DocumentResultCard
             documentRunId={message.documentRunId}
-            docxUrl={message.documentDocxUrl}
-            pdfUrl={message.documentPdfUrl}
+            {...(message.documentDocxUrl ? { docxUrl: message.documentDocxUrl } : {})}
+            {...(message.documentPdfUrl ? { pdfUrl: message.documentPdfUrl } : {})}
           />
         )}
 
