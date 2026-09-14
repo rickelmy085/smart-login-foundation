@@ -203,10 +203,14 @@ function AbisPage() {
       } else if (data.status === "completed" || data.status === "failed") {
         appendAssistantMessage(question, data, data.status);
         setAgentState(data.status);
-      } else {
+      } else if (data.plan_id) {
         // Execução assíncrona ainda em andamento ("running"): entrega ao polling.
         handedOffToPolling = true;
         setAgentState("executing");
+      } else {
+        // Status inesperado sem plano para acompanhar: mostra o que veio, nunca silencia.
+        appendAssistantMessage(question, data, "completed");
+        setAgentState("completed");
       }
     } catch (err) {
       const message = err instanceof Error ? err.message : "Erro ao consultar o assistente.";
