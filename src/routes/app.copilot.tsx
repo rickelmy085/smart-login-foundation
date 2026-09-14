@@ -47,6 +47,7 @@ import {
   type Source,
   type AgentStatus,
   type AgentPlan,
+  type AgentResponse,
   agentProcess,
   agentHumanInput,
   getAgentStatus,
@@ -110,10 +111,53 @@ function AbisPage() {
   const [humanInputValue, setHumanInputValue] = useState("");
   const [humanInputLoading, setHumanInputLoading] = useState(false);
   const endRef = useRef<HTMLDivElement>(null);
+  const finalizedPlanRef = useRef<string | null>(null);
 
   useEffect(() => {
     endRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [messages, loading]);
+
+  // Extrai o texto da resposta final a partir da mensagem ou dos resultados das tools.
+  function extractAnswer(data: AgentResponse): string {
+    if (data.message && data.message.trim()) return data.message;
+    const results = data.results ?? [];
+    for (let i = results.length - 1; i >= 0; i--) {
+      const out = results[i]?.output;
+      if (out && typeof out === "object") {
+        if (typeof out.answer === "string" && out.answer.trim()) return out.answer;
+        if (typeof out.message === "string" && out.message.trim()) return out.message;
+      }
+    }
+    return "Tarefa concluída.";
+  }
+
+  function appendAssistantMessage(goal: string, data: AgentResponse, status: AgentStatus) {
+    const isNoEvidence = /normativos dispon.i?veis n.?o trazem informa.?.?o suficiente/i.test(
+      data.message ?? "",
+    );
+    setMessages((prev) => [
+      ...prev,
+      {
+        id: uuid(),
+        role: "assistant",
+        content: status === "failed" ? data.message || "Falha ao executar a tarefa." : extractAnswer(data),
+        sources: data.results?.flatMap((r: any) => r.output?.sources ?? []) ?? [],
+        documentRunId: data.results?.find((r: any) => r.tool === "generate_document")?.output
+          ?.document_run_id,
+        documentDocxUrl: data.results?.find((r: any) => r.tool === "generate_document")?.output
+          ?.docx_url,
+        documentPdfUrl: data.results?.find((r: any) => r.tool === "generate_document")?.output
+          ?.pdf_url,
+        error:
+          status === "failed"
+            ? data.error || "Falha ao executar a tarefa."
+            : isNoEvidence
+              ? "no_evidence"
+              : undefined,
+        agentTrace: buildTrace(goal, data, status),
+      },
+    ]);
+  }
 
   async function submit(e?: React.FormEvent) {
     e?.preventDefault();
@@ -128,6 +172,9 @@ function AbisPage() {
     setAgentResults([]);
     setCurrentPlan(null);
     setCurrentGoal(question);
+    finalizedPlanRef.current = null;
+
+    let handedOffToPolling = false;
 
     try {
       const data = await agentProcess({ goal: question, allowWebSearch });
@@ -136,52 +183,34 @@ function AbisPage() {
       if (data.plan_id) setCurrentPlanId(data.plan_id);
       if (data.results) setAgentResults(data.results);
 
+      // Erro de planejamento/execução: backend retorna success=false sem status.
+      if (!data.success && !data.status) {
+        const message = data.error || "Não foi possível processar sua solicitação.";
+        setMessages((prev) => [
+          ...prev,
+          { id: uuid(), role: "assistant", content: message, error: message },
+        ]);
+        setError(message);
+        toast.error(message);
+        return;
+      }
+
       if (data.status === "awaiting_human" && data.human_question) {
         setPendingHumanQuestion(data.human_question);
-        setMessages((prev) => [
-          ...prev,
-          {
-            id: uuid(),
-            role: "assistant",
-            content: data.message,
-            agentTrace: buildTrace(question, data, "awaiting_human"),
-          },
-        ]);
+        appendAssistantMessage(question, data, "awaiting_human");
         setHumanInputOpen(true);
         setAgentState("awaiting_human");
-      } else if (data.status === "completed") {
-        const isNoEvidence = /normativos dispon.i?veis n.?o trazem informa.?.?o suficiente/i.test(
-          data.message,
-        );
-        setMessages((prev) => [
-          ...prev,
-          {
-            id: uuid(),
-            role: "assistant",
-            content: data.message,
-            sources: data.results?.flatMap((r: any) => r.output?.sources ?? []) ?? [],
-            documentRunId: data.results?.find((r: any) => r.tool === "generate_document")?.output
-              ?.document_run_id,
-            documentDocxUrl: data.results?.find((r: any) => r.tool === "generate_document")?.output
-              ?.docx_url,
-            documentPdfUrl: data.results?.find((r: any) => r.tool === "generate_document")?.output
-              ?.pdf_url,
-            error: isNoEvidence ? "no_evidence" : undefined,
-            agentTrace: buildTrace(question, data, "completed"),
-          },
-        ]);
-      } else if (data.status === "failed") {
-        setMessages((prev) => [
-          ...prev,
-          {
-            id: uuid(),
-            role: "assistant",
-            content: data.message,
-            error: data.error || "Falha ao executar a tarefa.",
-          },
-        ]);
-      } else {
+      } else if (data.status === "completed" || data.status === "failed") {
+        appendAssistantMessage(question, data, data.status);
         setAgentState(data.status);
+      } else if (data.plan_id) {
+        // Execução assíncrona ainda em andamento ("running"): entrega ao polling.
+        handedOffToPolling = true;
+        setAgentState("executing");
+      } else {
+        // Status inesperado sem plano para acompanhar: mostra o que veio, nunca silencia.
+        appendAssistantMessage(question, data, "completed");
+        setAgentState("completed");
       }
     } catch (err) {
       const message = err instanceof Error ? err.message : "Erro ao consultar o assistente.";
@@ -197,8 +226,10 @@ function AbisPage() {
       ]);
       toast.error(message);
     } finally {
-      setLoading(false);
-      setAgentState((s) => (s === "awaiting_human" ? s : "idle"));
+      if (!handedOffToPolling) {
+        setLoading(false);
+        setAgentState((s) => (s === "awaiting_human" || s === "completed" || s === "failed" ? s : "idle"));
+      }
     }
   }
 
@@ -206,6 +237,7 @@ function AbisPage() {
     if (!currentPlanId || !humanInputValue.trim()) return;
 
     setHumanInputLoading(true);
+    let handedOffToPolling = false;
     try {
       const data = await agentHumanInput(currentPlanId, humanInputValue.trim());
 
@@ -217,75 +249,69 @@ function AbisPage() {
       setPendingHumanQuestion(null);
       setLoading(true);
 
-      if (data.status === "completed") {
-        setMessages((prev) => [
-          ...prev,
-          {
-            id: uuid(),
-            role: "assistant",
-            content: data.message,
-            sources: data.results?.flatMap((r: any) => r.output?.sources ?? []) ?? [],
-            documentRunId: data.results?.find((r: any) => r.tool === "generate_document")?.output
-              ?.document_run_id,
-            documentDocxUrl: data.results?.find((r: any) => r.tool === "generate_document")?.output
-              ?.docx_url,
-            documentPdfUrl: data.results?.find((r: any) => r.tool === "generate_document")?.output
-              ?.pdf_url,
-            agentTrace: buildTrace(currentGoal, data, "completed"),
-          },
-        ]);
-        setAgentState("completed");
+      if (data.status === "completed" || data.status === "failed") {
+        appendAssistantMessage(currentGoal, data, data.status);
+        setAgentState(data.status);
       } else if (data.status === "awaiting_human" && data.human_question) {
         setPendingHumanQuestion(data.human_question);
-        setMessages((prev) => [
-          ...prev,
-          {
-            id: uuid(),
-            role: "assistant",
-            content: data.message,
-            agentTrace: buildTrace(currentGoal, data, "awaiting_human"),
-          },
-        ]);
+        appendAssistantMessage(currentGoal, data, "awaiting_human");
         setHumanInputOpen(true);
         setAgentState("awaiting_human");
-      } else if (data.status === "failed") {
+      } else if (!data.success) {
+        const message = data.error || "Não foi possível processar a resposta.";
         setMessages((prev) => [
           ...prev,
-          {
-            id: uuid(),
-            role: "assistant",
-            content: data.message,
-            error: data.error || "Falha ao executar a tarefa.",
-          },
+          { id: uuid(), role: "assistant", content: message, error: message },
         ]);
+        toast.error(message);
         setAgentState("failed");
       } else {
-        setAgentState(data.status);
+        // Ainda em execução ("running"): continua acompanhando via polling.
+        handedOffToPolling = true;
+        setAgentState("executing");
       }
     } catch (err) {
       const message = err instanceof Error ? err.message : "Erro ao processar resposta.";
       toast.error(message);
     } finally {
       setHumanInputLoading(false);
-      setLoading(false);
+      if (!handedOffToPolling) {
+        setLoading(false);
+      }
     }
   }
 
   useEffect(() => {
     if (!currentPlanId || agentState !== "executing") return;
+    const planId = currentPlanId;
     const interval = setInterval(async () => {
       try {
-        const data = await getAgentStatus(currentPlanId);
+        const data = await getAgentStatus(planId);
         if (data.plan) setCurrentPlan(data.plan);
         if (data.results) setAgentResults(data.results);
         if (data.status === "awaiting_human" && data.human_question) {
+          if (finalizedPlanRef.current !== `${planId}:human`) {
+            finalizedPlanRef.current = `${planId}:human`;
+            appendAssistantMessage(currentGoal, data, "awaiting_human");
+          }
           setPendingHumanQuestion(data.human_question);
           setHumanInputOpen(true);
           setAgentState("awaiting_human");
+          setLoading(false);
         } else if (data.status === "completed" || data.status === "failed") {
+          // Adiciona a resposta final do assistente ao chat (uma única vez por plano).
+          if (finalizedPlanRef.current !== `${planId}:final`) {
+            finalizedPlanRef.current = `${planId}:final`;
+            appendAssistantMessage(currentGoal, data, data.status);
+            if (data.status === "failed") {
+              toast.error(data.error || "Falha ao executar a tarefa.");
+            }
+          }
           setAgentState(data.status);
+          setLoading(false);
         }
       } catch {
+        // Falha transitória de rede no polling: tenta novamente no próximo ciclo.
       }
     }, 2500);
     return () => clearInterval(interval);
