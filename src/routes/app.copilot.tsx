@@ -257,75 +257,69 @@ function AbisPage() {
       setPendingHumanQuestion(null);
       setLoading(true);
 
-      if (data.status === "completed") {
-        setMessages((prev) => [
-          ...prev,
-          {
-            id: uuid(),
-            role: "assistant",
-            content: data.message,
-            sources: data.results?.flatMap((r: any) => r.output?.sources ?? []) ?? [],
-            documentRunId: data.results?.find((r: any) => r.tool === "generate_document")?.output
-              ?.document_run_id,
-            documentDocxUrl: data.results?.find((r: any) => r.tool === "generate_document")?.output
-              ?.docx_url,
-            documentPdfUrl: data.results?.find((r: any) => r.tool === "generate_document")?.output
-              ?.pdf_url,
-            agentTrace: buildTrace(currentGoal, data, "completed"),
-          },
-        ]);
-        setAgentState("completed");
+      if (data.status === "completed" || data.status === "failed") {
+        appendAssistantMessage(data, data.status);
+        setAgentState(data.status);
       } else if (data.status === "awaiting_human" && data.human_question) {
         setPendingHumanQuestion(data.human_question);
-        setMessages((prev) => [
-          ...prev,
-          {
-            id: uuid(),
-            role: "assistant",
-            content: data.message,
-            agentTrace: buildTrace(currentGoal, data, "awaiting_human"),
-          },
-        ]);
+        appendAssistantMessage(data, "awaiting_human");
         setHumanInputOpen(true);
         setAgentState("awaiting_human");
-      } else if (data.status === "failed") {
+      } else if (!data.success) {
+        const message = data.error || "Não foi possível processar a resposta.";
         setMessages((prev) => [
           ...prev,
-          {
-            id: uuid(),
-            role: "assistant",
-            content: data.message,
-            error: data.error || "Falha ao executar a tarefa.",
-          },
+          { id: uuid(), role: "assistant", content: message, error: message },
         ]);
+        toast.error(message);
         setAgentState("failed");
       } else {
-        setAgentState(data.status);
+        // Ainda em execução ("running"): continua acompanhando via polling.
+        handedOffToPolling = true;
+        setAgentState("executing");
       }
     } catch (err) {
       const message = err instanceof Error ? err.message : "Erro ao processar resposta.";
       toast.error(message);
     } finally {
       setHumanInputLoading(false);
-      setLoading(false);
+      if (!handedOffToPolling) {
+        setLoading(false);
+      }
     }
   }
 
   useEffect(() => {
     if (!currentPlanId || agentState !== "executing") return;
+    const planId = currentPlanId;
     const interval = setInterval(async () => {
       try {
-        const data = await getAgentStatus(currentPlanId);
+        const data = await getAgentStatus(planId);
         if (data.plan) setCurrentPlan(data.plan);
         if (data.results) setAgentResults(data.results);
         if (data.status === "awaiting_human" && data.human_question) {
+          if (finalizedPlanRef.current !== planId) {
+            finalizedPlanRef.current = planId;
+            appendAssistantMessage(data, "awaiting_human");
+          }
           setPendingHumanQuestion(data.human_question);
           setHumanInputOpen(true);
           setAgentState("awaiting_human");
+          setLoading(false);
         } else if (data.status === "completed" || data.status === "failed") {
+          // Adiciona a resposta final do assistente ao chat (uma única vez por plano).
+          if (finalizedPlanRef.current !== planId) {
+            finalizedPlanRef.current = planId;
+            appendAssistantMessage(data, data.status);
+            if (data.status === "failed") {
+              toast.error(data.error || "Falha ao executar a tarefa.");
+            }
+          }
           setAgentState(data.status);
+          setLoading(false);
         }
       } catch {
+        // Falha transitória de rede no polling: tenta novamente no próximo ciclo.
       }
     }, 2500);
     return () => clearInterval(interval);
