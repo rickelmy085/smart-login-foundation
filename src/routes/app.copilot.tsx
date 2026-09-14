@@ -47,6 +47,7 @@ import {
   type Source,
   type AgentStatus,
   type AgentPlan,
+  type AgentResponse,
   agentProcess,
   agentHumanInput,
   getAgentStatus,
@@ -116,20 +117,6 @@ function AbisPage() {
     endRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [messages, loading]);
 
-  // Normaliza os status do backend ("running") para os estados da UI ("executing").
-  function normalizeStatus(status: string | undefined): AgentStatus {
-    if (status === "running" || status === "executing") return "executing";
-    if (
-      status === "awaiting_human" ||
-      status === "completed" ||
-      status === "failed" ||
-      status === "planning"
-    ) {
-      return status;
-    }
-    return "executing";
-  }
-
   // Extrai o texto da resposta final a partir da mensagem ou dos resultados das tools.
   function extractAnswer(data: AgentResponse): string {
     if (data.message && data.message.trim()) return data.message;
@@ -144,7 +131,7 @@ function AbisPage() {
     return "Tarefa concluída.";
   }
 
-  function appendAssistantMessage(data: AgentResponse, status: AgentStatus) {
+  function appendAssistantMessage(goal: string, data: AgentResponse, status: AgentStatus) {
     const isNoEvidence = /normativos dispon.i?veis n.?o trazem informa.?.?o suficiente/i.test(
       data.message ?? "",
     );
@@ -167,7 +154,7 @@ function AbisPage() {
             : isNoEvidence
               ? "no_evidence"
               : undefined,
-        agentTrace: buildTrace(currentGoal, data, status),
+        agentTrace: buildTrace(goal, data, status),
       },
     ]);
   }
