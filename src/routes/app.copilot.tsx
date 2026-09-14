@@ -110,10 +110,67 @@ function AbisPage() {
   const [humanInputValue, setHumanInputValue] = useState("");
   const [humanInputLoading, setHumanInputLoading] = useState(false);
   const endRef = useRef<HTMLDivElement>(null);
+  const finalizedPlanRef = useRef<string | null>(null);
 
   useEffect(() => {
     endRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [messages, loading]);
+
+  // Normaliza os status do backend ("running") para os estados da UI ("executing").
+  function normalizeStatus(status: string | undefined): AgentStatus {
+    if (status === "running" || status === "executing") return "executing";
+    if (
+      status === "awaiting_human" ||
+      status === "completed" ||
+      status === "failed" ||
+      status === "planning"
+    ) {
+      return status;
+    }
+    return "executing";
+  }
+
+  // Extrai o texto da resposta final a partir da mensagem ou dos resultados das tools.
+  function extractAnswer(data: AgentResponse): string {
+    if (data.message && data.message.trim()) return data.message;
+    const results = data.results ?? [];
+    for (let i = results.length - 1; i >= 0; i--) {
+      const out = results[i]?.output;
+      if (out && typeof out === "object") {
+        if (typeof out.answer === "string" && out.answer.trim()) return out.answer;
+        if (typeof out.message === "string" && out.message.trim()) return out.message;
+      }
+    }
+    return "Tarefa concluída.";
+  }
+
+  function appendAssistantMessage(data: AgentResponse, status: AgentStatus) {
+    const isNoEvidence = /normativos dispon.i?veis n.?o trazem informa.?.?o suficiente/i.test(
+      data.message ?? "",
+    );
+    setMessages((prev) => [
+      ...prev,
+      {
+        id: uuid(),
+        role: "assistant",
+        content: status === "failed" ? data.message || "Falha ao executar a tarefa." : extractAnswer(data),
+        sources: data.results?.flatMap((r: any) => r.output?.sources ?? []) ?? [],
+        documentRunId: data.results?.find((r: any) => r.tool === "generate_document")?.output
+          ?.document_run_id,
+        documentDocxUrl: data.results?.find((r: any) => r.tool === "generate_document")?.output
+          ?.docx_url,
+        documentPdfUrl: data.results?.find((r: any) => r.tool === "generate_document")?.output
+          ?.pdf_url,
+        error:
+          status === "failed"
+            ? data.error || "Falha ao executar a tarefa."
+            : isNoEvidence
+              ? "no_evidence"
+              : undefined,
+        agentTrace: buildTrace(currentGoal, data, status),
+      },
+    ]);
+  }
 
   async function submit(e?: React.FormEvent) {
     e?.preventDefault();
@@ -128,6 +185,9 @@ function AbisPage() {
     setAgentResults([]);
     setCurrentPlan(null);
     setCurrentGoal(question);
+    finalizedPlanRef.current = null;
+
+    let handedOffToPolling = false;
 
     try {
       const data = await agentProcess({ goal: question, allowWebSearch });
@@ -135,6 +195,18 @@ function AbisPage() {
       if (data.plan) setCurrentPlan(data.plan);
       if (data.plan_id) setCurrentPlanId(data.plan_id);
       if (data.results) setAgentResults(data.results);
+
+      // Erro de planejamento/execução: backend retorna success=false sem status.
+      if (!data.success && !data.status) {
+        const message = data.error || "Não foi possível processar sua solicitação.";
+        setMessages((prev) => [
+          ...prev,
+          { id: uuid(), role: "assistant", content: message, error: message },
+        ]);
+        setError(message);
+        toast.error(message);
+        return;
+      }
 
       if (data.status === "awaiting_human" && data.human_question) {
         setPendingHumanQuestion(data.human_question);
