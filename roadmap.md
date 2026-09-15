@@ -1,6 +1,7 @@
 # ABIS — Roadmap
 
 ## Etapa 1
+
 - [x] Design system global (tokens claro/escuro, fontes, utilitários)
 - [x] Tema claro/escuro persistido (localStorage, sem flash)
 - [x] Componentes reutilizáveis (ThemeToggle, BrandLogo, PasswordInput)
@@ -8,6 +9,7 @@
 - [x] Autenticação simulada (RE 123456 / demo123) + redirecionamento
 
 ## Etapa 2
+
 - [x] Layout autenticado: Header + Sidebar retrátil + Área principal
 - [x] Dashboard inicial
 - [x] Navegação entre seções

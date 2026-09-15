@@ -55,7 +55,9 @@ export function AppHeader({
               size="icon"
               className="relative rounded-full"
               aria-label="Notificações (2 novas)"
-              onClick={() => toast.info("Nenhuma notificação pendente no ambiente de demonstração.")}
+              onClick={() =>
+                toast.info("Nenhuma notificação pendente no ambiente de demonstração.")
+              }
             >
               <Bell />
               <span
@@ -98,7 +100,10 @@ export function AppHeader({
               </Link>
             </DropdownMenuItem>
             <DropdownMenuSeparator />
-            <DropdownMenuItem onClick={onSignOut} className="text-destructive focus:text-destructive">
+            <DropdownMenuItem
+              onClick={onSignOut}
+              className="text-destructive focus:text-destructive"
+            >
               <LogOut /> Sair
             </DropdownMenuItem>
           </DropdownMenuContent>

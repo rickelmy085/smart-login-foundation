@@ -127,7 +127,8 @@
     oklch(0.38 0.12 25) 100%
   );
   --shadow-elegant: 0 20px 50px -20px color-mix(in oklab, var(--primary) 35%, transparent);
-  --shadow-panel: 0 1px 2px color-mix(in oklab, var(--foreground) 6%, transparent),
+  --shadow-panel:
+    0 1px 2px color-mix(in oklab, var(--foreground) 6%, transparent),
     0 12px 32px -16px color-mix(in oklab, var(--foreground) 18%, transparent);
 }
 
@@ -277,46 +278,68 @@
   margin: 0.25rem 0;
   color: var(--color-muted-foreground);
 }
-  .markdown-body code {
-    background: var(--color-muted);
-    border-radius: 0.35rem;
-    padding: 0.1rem 0.3rem;
-    font-size: 0.8rem;
-  }
-  .markdown-body pre {
-    background: var(--color-muted);
-    border-radius: 0.5rem;
-    padding: 0.75rem;
-    overflow-x: auto;
-    margin: 0.4rem 0;
-  }
-  .markdown-body pre code {
-    background: transparent;
-    padding: 0;
-    font-size: 0.75rem;
-  }
-  /* rehype-highlight (hljs) syntax highlighting */
-  .hljs {
-    color: var(--color-foreground);
-    background: var(--color-muted);
-    border-radius: 0.5rem;
-    padding: 0.75rem;
-    overflow-x: auto;
-    font-size: 0.75rem;
-    line-height: 1.5;
-  }
-  .hljs-comment { color: var(--color-muted-foreground); font-style: italic; }
-  .hljs-keyword { color: var(--color-brand); font-weight: 600; }
-  .hljs-string { color: var(--color-warning); }
-  .hljs-number { color: var(--color-success); }
-  .hljs-variable { color: var(--color-foreground); }
-  .hljs-function { color: var(--color-chart-1); }
-  .hljs-class { color: var(--color-chart-3); font-weight: 600; }
-  .hljs-attr { color: var(--color-chart-4); }
-  .hljs-title { color: var(--color-chart-1); font-weight: 600; }
-  pre code.hljs {
-    display: block;
-    overflow-x: auto;
-    padding: 0;
-    background: transparent;
-  }
+.markdown-body code {
+  background: var(--color-muted);
+  border-radius: 0.35rem;
+  padding: 0.1rem 0.3rem;
+  font-size: 0.8rem;
+}
+.markdown-body pre {
+  background: var(--color-muted);
+  border-radius: 0.5rem;
+  padding: 0.75rem;
+  overflow-x: auto;
+  margin: 0.4rem 0;
+}
+.markdown-body pre code {
+  background: transparent;
+  padding: 0;
+  font-size: 0.75rem;
+}
+/* rehype-highlight (hljs) syntax highlighting */
+.hljs {
+  color: var(--color-foreground);
+  background: var(--color-muted);
+  border-radius: 0.5rem;
+  padding: 0.75rem;
+  overflow-x: auto;
+  font-size: 0.75rem;
+  line-height: 1.5;
+}
+.hljs-comment {
+  color: var(--color-muted-foreground);
+  font-style: italic;
+}
+.hljs-keyword {
+  color: var(--color-brand);
+  font-weight: 600;
+}
+.hljs-string {
+  color: var(--color-warning);
+}
+.hljs-number {
+  color: var(--color-success);
+}
+.hljs-variable {
+  color: var(--color-foreground);
+}
+.hljs-function {
+  color: var(--color-chart-1);
+}
+.hljs-class {
+  color: var(--color-chart-3);
+  font-weight: 600;
+}
+.hljs-attr {
+  color: var(--color-chart-4);
+}
+.hljs-title {
+  color: var(--color-chart-1);
+  font-weight: 600;
+}
+pre code.hljs {
+  display: block;
+  overflow-x: auto;
+  padding: 0;
+  background: transparent;
+}

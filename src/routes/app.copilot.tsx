@@ -9,6 +9,7 @@ import {
   AlertCircle,
   FileText,
   Globe,
+<<<<<<< HEAD
   Loader2,
   Check,
   Clock,
@@ -22,6 +23,8 @@ import {
   Circle,
   CheckCircle2,
   CircleDot,
+=======
+>>>>>>> a424274 (feat(fullstack): enhance workflow management with priority and deadlines)
 } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
@@ -178,9 +181,15 @@ function AbisPage() {
     try {
       const data = await agentProcess({ goal: question, allowWebSearch });
 
+<<<<<<< HEAD
       if (data.plan) setCurrentPlan(data.plan);
       if (data.plan_id) setCurrentPlanId(data.plan_id);
       if (data.results) setAgentResults(data.results);
+=======
+      const isNoEvidence = /normativos dispon.i?veis n.?o trazem informa.?.?o suficiente/i.test(
+        data.answer,
+      );
+>>>>>>> a424274 (feat(fullstack): enhance workflow management with priority and deadlines)
 
       // Erro de planejamento/execução: backend retorna success=false sem status.
       if (!data.success && !data.status) {
@@ -326,18 +335,29 @@ function AbisPage() {
             </span>
             <h2 className="mt-6 text-2xl font-bold sm:text-3xl">Olá. Como posso ajudar hoje?</h2>
             <p className="mt-2 max-w-md text-sm text-muted-foreground">
+<<<<<<< HEAD
               Eu entendo o que você precisa fazer e conduzo a tarefa até o resultado, respeitando os
               normativos da organização.
+=======
+              Consulte conhecimento corporativo, normativos e informações operacionais em linguagem
+              natural.
+>>>>>>> a424274 (feat(fullstack): enhance workflow management with priority and deadlines)
             </p>
 
             <ul className="mt-8 grid w-full gap-3 sm:grid-cols-3">
               {capabilities.map((c) => (
                 <li
                   key={c.title}
+<<<<<<< HEAD
                   className="rounded-xl border border-border bg-card p-4 text-left shadow-panel transition-colors hover:border-primary/40"
                 >
                   <c.icon className="size-5 text-brand" aria-hidden="true" />
                   <p className="mt-2 text-sm font-semibold">{c.title}</p>
+=======
+                  className="rounded-xl border border-border bg-card p-4 text-left shadow-panel"
+                >
+                  <p className="text-sm font-semibold">{c.title}</p>
+>>>>>>> a424274 (feat(fullstack): enhance workflow management with priority and deadlines)
                   <p className="mt-1 text-xs text-muted-foreground">{c.text}</p>
                 </li>
               ))}
@@ -427,7 +447,12 @@ function AbisPage() {
             <span className="hidden text-[11px] text-muted-foreground sm:inline">
               Enter para enviar · Shift+Enter para nova linha
             </span>
-            <Button type="submit" size="icon" aria-label="Enviar" disabled={!value.trim() || loading}>
+            <Button
+              type="submit"
+              size="icon"
+              aria-label="Enviar"
+              disabled={!value.trim() || loading}
+            >
               <SendHorizonal />
             </Button>
           </div>
@@ -583,14 +608,22 @@ function MessageBubble({ message }: { message: ChatMessage }) {
         {isUser ? (
           <User className="size-4" aria-hidden="true" />
         ) : (
+<<<<<<< HEAD
           <Bot className="size-4 text-primary" aria-hidden="true" />
+=======
+          <Bot className="size-4" aria-hidden="true" />
+>>>>>>> a424274 (feat(fullstack): enhance workflow management with priority and deadlines)
         )}
       </span>
 
       <div className={`flex max-w-[85%] flex-col ${isUser ? "items-end" : "items-start"}`}>
         <div
           className={`rounded-2xl px-4 py-3 text-sm leading-relaxed ${
+<<<<<<< HEAD
             isUser ? "bg-primary text-primary-foreground" : "border border-border bg-card shadow-panel"
+=======
+            isUser ? "bg-primary text-primary-foreground" : "border border-border bg-card"
+>>>>>>> a424274 (feat(fullstack): enhance workflow management with priority and deadlines)
           }`}
         >
           {isUser ? (
@@ -601,26 +634,44 @@ function MessageBubble({ message }: { message: ChatMessage }) {
                 remarkPlugins={[remarkGfm]}
                 rehypePlugins={[rehypeHighlight]}
                 components={{
+<<<<<<< HEAD
                   p: ({ children, ...props }) => (
                     <p className="mb-2 leading-relaxed last:mb-0" {...props}>
                       {children}
                     </p>
                   ),
                   h1: ({ children, ...props }) => (
+=======
+                  p: ({ node, children, ...props }) => (
+                    <p className="mb-2 leading-relaxed" {...props}>
+                      {children}
+                    </p>
+                  ),
+                  h1: ({ node, children, ...props }) => (
+>>>>>>> a424274 (feat(fullstack): enhance workflow management with priority and deadlines)
                     <h1 className="my-3 text-xl font-bold" {...props}>
                       {children}
                     </h1>
                   ),
+<<<<<<< HEAD
                   h2: ({ children, ...props }) => (
+=======
+                  h2: ({ node, children, ...props }) => (
+>>>>>>> a424274 (feat(fullstack): enhance workflow management with priority and deadlines)
                     <h2 className="my-3 text-lg font-bold" {...props}>
                       {children}
                     </h2>
                   ),
+<<<<<<< HEAD
                   h3: ({ children, ...props }) => (
+=======
+                  h3: ({ node, children, ...props }) => (
+>>>>>>> a424274 (feat(fullstack): enhance workflow management with priority and deadlines)
                     <h3 className="my-2 text-base font-semibold" {...props}>
                       {children}
                     </h3>
                   ),
+<<<<<<< HEAD
                   ul: ({ children, ...props }) => (
                     <ul className="my-2 ml-4 list-disc space-y-1" {...props}>
                       {children}
@@ -637,11 +688,33 @@ function MessageBubble({ message }: { message: ChatMessage }) {
                     </li>
                   ),
                   strong: ({ children, ...props }) => (
+=======
+                  ul: ({ node, children, ...props }) => (
+                    <ul className="my-2 ml-4 list-disc" {...props}>
+                      {children}
+                    </ul>
+                  ),
+                  ol: ({ node, children, ...props }) => (
+                    <ol className="my-2 ml-4 list-decimal" {...props}>
+                      {children}
+                    </ol>
+                  ),
+                  li: ({ node, children, ...props }) => (
+                    <li className="mb-1" {...props}>
+                      {children}
+                    </li>
+                  ),
+                  strong: ({ node, children, ...props }) => (
+>>>>>>> a424274 (feat(fullstack): enhance workflow management with priority and deadlines)
                     <strong className="font-semibold" {...props}>
                       {children}
                     </strong>
                   ),
+<<<<<<< HEAD
                   blockquote: ({ children, ...props }) => (
+=======
+                  blockquote: ({ node, children, ...props }) => (
+>>>>>>> a424274 (feat(fullstack): enhance workflow management with priority and deadlines)
                     <blockquote
                       className="my-2 border-l-2 border-border pl-4 italic text-muted-foreground"
                       {...props}
@@ -654,7 +727,11 @@ function MessageBubble({ message }: { message: ChatMessage }) {
                     const inline = !match && !className;
                     return (
                       <code
+<<<<<<< HEAD
                         className={match ? `language-${match[1]}` : className}
+=======
+                        className={codeClass}
+>>>>>>> a424274 (feat(fullstack): enhance workflow management with priority and deadlines)
                         style={
                           inline
                             ? {
@@ -788,6 +865,7 @@ function DocumentResultCard({
           Baixar PDF
         </Button>
       </div>
+<<<<<<< HEAD
     </div>
   );
 }
@@ -804,6 +882,13 @@ function SourcesList({ sources }: { sources: Source[] }) {
       <p className="mb-2 flex items-center gap-1.5 text-xs font-semibold text-muted-foreground">
         <BookOpen className="size-3.5" aria-hidden="true" />
         Fontes utilizadas
+=======
+      <p className="mt-1 line-clamp-3 text-xs text-muted-foreground">
+        {source.snippet || source.content}
+      </p>
+      <p className="mt-1 text-[11px] text-muted-foreground/80">
+        score {typeof source.score === "number" ? source.score.toFixed(2) : "—"}
+>>>>>>> a424274 (feat(fullstack): enhance workflow management with priority and deadlines)
       </p>
       <ul className="space-y-1.5">
         {deduped.map((src, idx) => (

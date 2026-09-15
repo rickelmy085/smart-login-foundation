@@ -4,15 +4,15 @@ package models
 type TaskStatus string
 
 const (
-	StatusDetected       TaskStatus = "detected"
-	StatusCollectingData TaskStatus = "collecting_data"
-	StatusValidating     TaskStatus = "validating"
+	StatusDetected        TaskStatus = "detected"
+	StatusCollectingData  TaskStatus = "collecting_data"
+	StatusValidating      TaskStatus = "validating"
 	StatusReadyToGenerate TaskStatus = "ready_to_generate"
-	StatusGenerating     TaskStatus = "generating"
-	StatusGenerated      TaskStatus = "generated"
-	StatusNeedsReview    TaskStatus = "needs_review"
-	StatusCompleted      TaskStatus = "completed"
-	StatusBlocked        TaskStatus = "blocked"
+	StatusGenerating      TaskStatus = "generating"
+	StatusGenerated       TaskStatus = "generated"
+	StatusNeedsReview     TaskStatus = "needs_review"
+	StatusCompleted       TaskStatus = "completed"
+	StatusBlocked         TaskStatus = "blocked"
 )
 
 // ValidTaskTransitions defines allowed state transitions.
@@ -58,45 +58,48 @@ const (
 type FieldType string
 
 const (
-	FieldTypeText      FieldType = "text"
-	FieldTypeNumber    FieldType = "number"
-	FieldTypeCurrency  FieldType = "currency"
-	FieldTypeDate      FieldType = "date"
-	FieldTypeBoolean   FieldType = "boolean"
-	FieldTypeSelect    FieldType = "select"
-	FieldTypeTextarea  FieldType = "textarea"
-	FieldTypeEmployee  FieldType = "employee"
+	FieldTypeText       FieldType = "text"
+	FieldTypeNumber     FieldType = "number"
+	FieldTypeCurrency   FieldType = "currency"
+	FieldTypeDate       FieldType = "date"
+	FieldTypeBoolean    FieldType = "boolean"
+	FieldTypeSelect     FieldType = "select"
+	FieldTypeTextarea   FieldType = "textarea"
+	FieldTypeEmployee   FieldType = "employee"
 	FieldTypeDepartment FieldType = "department"
-	FieldTypeCompany   FieldType = "company"
-	FieldTypeSupplier  FieldType = "supplier"
+	FieldTypeCompany    FieldType = "company"
+	FieldTypeSupplier   FieldType = "supplier"
 )
 
 // Intent represents the classified intent of a user request.
 type Intent string
 
 const (
-	IntentKnowledgeQuery      Intent = "knowledge_query"
-	IntentProcedureQuery      Intent = "procedure_query"
-	IntentDocumentGeneration  Intent = "document_generation"
-	IntentFormCompletion      Intent = "form_completion"
-	IntentApprovalCheck       Intent = "approval_check"
-	IntentRequirementCheck    Intent = "requirement_check"
+	IntentKnowledgeQuery     Intent = "knowledge_query"
+	IntentProcedureQuery     Intent = "procedure_query"
+	IntentDocumentGeneration Intent = "document_generation"
+	IntentFormCompletion     Intent = "form_completion"
+	IntentApprovalCheck      Intent = "approval_check"
+	IntentRequirementCheck   Intent = "requirement_check"
 	IntentWorkflowExecution  Intent = "workflow_execution"
-	IntentCapabilityQuery     Intent = "capability_query"
+	IntentCapabilityQuery    Intent = "capability_query"
 )
 
 // WorkflowTask represents a workflow task in the system.
 type WorkflowTask struct {
-	ID            string     `json:"id" db:"id"`
-	EmployeeID    string     `json:"employeeId" db:"employee_id"`
-	Intent        Intent     `json:"intent" db:"intent"`
-	Procedure     string     `json:"procedure" db:"procedure"`
-	Status        TaskStatus `json:"status" db:"status"`
-	OriginalRequest string    `json:"originalRequest" db:"original_request"`
-	TemplateID    string     `json:"templateId" db:"template_id"`
-	TemplateKey   string     `json:"templateKey" db:"template_key"`
-	CreatedAt     string     `json:"createdAt" db:"created_at"`
-	UpdatedAt     string     `json:"updatedAt" db:"updated_at"`
+	ID              string     `json:"id" db:"id"`
+	EmployeeID      string     `json:"employeeId" db:"employee_id"`
+	Intent          Intent     `json:"intent" db:"intent"`
+	Procedure       string     `json:"procedure" db:"procedure"`
+	Status          TaskStatus `json:"status" db:"status"`
+	OriginalRequest string     `json:"originalRequest" db:"original_request"`
+	TemplateID      string     `json:"templateId" db:"template_id"`
+	TemplateKey     string     `json:"templateKey" db:"template_key"`
+	Deadline        *string    `json:"deadline,omitempty" db:"deadline"`
+	Priority        string     `json:"priority,omitempty" db:"priority"`
+	Origin          string     `json:"origin,omitempty" db:"origin"`
+	CreatedAt       string     `json:"createdAt" db:"created_at"`
+	UpdatedAt       string     `json:"updatedAt" db:"updated_at"`
 }
 
 // WorkflowRequirement represents a requirement extracted from normatives.
@@ -107,7 +110,7 @@ type WorkflowRequirement struct {
 	Label          string `json:"label" db:"label"`
 	Required       bool   `json:"required" db:"required"`
 	SourceDocument string `json:"sourceDocument" db:"source_document"`
-	SourceChunkID *int64  `json:"sourceChunkId" db:"source_chunk_id"`
+	SourceChunkID  *int64 `json:"sourceChunkId" db:"source_chunk_id"`
 	SourceSnippet  string `json:"sourceSnippet" db:"source_snippet"`
 	Rank           int    `json:"rank" db:"rank"`
 	CreatedAt      string `json:"createdAt" db:"created_at"`
@@ -115,12 +118,12 @@ type WorkflowRequirement struct {
 
 // WorkflowData represents collected data for a task.
 type WorkflowData struct {
-	ID         string `json:"id" db:"id"`
-	TaskID     string `json:"taskId" db:"task_id"`
-	FieldName  string `json:"fieldName" db:"field_name"`
-	Value      string `json:"value" db:"value"`
-	CreatedAt  string `json:"createdAt" db:"created_at"`
-	UpdatedAt  string `json:"updatedAt" db:"updated_at"`
+	ID        string `json:"id" db:"id"`
+	TaskID    string `json:"taskId" db:"task_id"`
+	FieldName string `json:"fieldName" db:"field_name"`
+	Value     string `json:"value" db:"value"`
+	CreatedAt string `json:"createdAt" db:"created_at"`
+	UpdatedAt string `json:"updatedAt" db:"updated_at"`
 }
 
 // DocumentTemplate represents a document template.
@@ -141,42 +144,42 @@ type DocumentTemplate struct {
 
 // TemplateField represents a field in a template.
 type TemplateField struct {
-	ID               string     `json:"id" db:"id"`
-	TemplateID       string     `json:"templateId" db:"template_id"`
-	FieldName        string     `json:"fieldName" db:"field_name"`
-	Label            string     `json:"label" db:"label"`
-	Type             FieldType  `json:"type" db:"type"`
-	Required         bool       `json:"required" db:"required"`
-	ValidationRule   string     `json:"validationRule" db:"validation_rule"`
+	ID                string    `json:"id" db:"id"`
+	TemplateID        string    `json:"templateId" db:"template_id"`
+	FieldName         string    `json:"fieldName" db:"field_name"`
+	Label             string    `json:"label" db:"label"`
+	Type              FieldType `json:"type" db:"type"`
+	Required          bool      `json:"required" db:"required"`
+	ValidationRule    string    `json:"validationRule" db:"validation_rule"`
 	SourceRequirement string    `json:"sourceRequirement" db:"source_requirement"`
 	NormativeDocument string    `json:"normativeDocument" db:"normative_document"`
-	NormativeChunkID *int64    `json:"normativeChunkId" db:"normative_chunk_id"`
-	CreatedAt        string     `json:"createdAt" db:"created_at"`
+	NormativeChunkID  *int64    `json:"normativeChunkId" db:"normative_chunk_id"`
+	CreatedAt         string    `json:"createdAt" db:"created_at"`
 }
 
 // DocumentRun represents a generated document.
 type DocumentRun struct {
-	ID            string           `json:"id" db:"id"`
-	TaskID        string           `json:"taskId" db:"task_id"`
-	EmployeeID    string           `json:"employeeId" db:"employee_id"`
-	TemplateID    string           `json:"templateId" db:"template_id"`
-	TemplateVersion string         `json:"templateVersion" db:"template_version"`
-	Status        DocumentRunStatus `json:"status" db:"status"`
-	DocxPath      string           `json:"docxPath" db:"docx_path"`
-	PdfPath       string           `json:"pdfPath" db:"pdf_path"`
-	CreatedAt     string           `json:"createdAt" db:"created_at"`
-	UpdatedAt     string           `json:"updatedAt" db:"updated_at"`
+	ID              string            `json:"id" db:"id"`
+	TaskID          string            `json:"taskId" db:"task_id"`
+	EmployeeID      string            `json:"employeeId" db:"employee_id"`
+	TemplateID      string            `json:"templateId" db:"template_id"`
+	TemplateVersion string            `json:"templateVersion" db:"template_version"`
+	Status          DocumentRunStatus `json:"status" db:"status"`
+	DocxPath        string            `json:"docxPath" db:"docx_path"`
+	PdfPath         string            `json:"pdfPath" db:"pdf_path"`
+	CreatedAt       string            `json:"createdAt" db:"created_at"`
+	UpdatedAt       string            `json:"updatedAt" db:"updated_at"`
 }
 
 // DocumentSource represents a normative source used in document generation.
 type DocumentSource struct {
-	ID               string `json:"id" db:"id"`
-	DocumentRunID    string `json:"documentRunId" db:"document_run_id"`
+	ID                string `json:"id" db:"id"`
+	DocumentRunID     string `json:"documentRunId" db:"document_run_id"`
 	NormativeDocument string `json:"normativeDocument" db:"normative_document"`
-	NormativeChunkID *int64 `json:"normativeChunkId" db:"normative_chunk_id"`
+	NormativeChunkID  *int64 `json:"normativeChunkId" db:"normative_chunk_id"`
 	NormativeSnippet  string `json:"normativeSnippet" db:"normative_snippet"`
-	Requirement      string `json:"requirement" db:"requirement"`
-	CreatedAt        string `json:"createdAt" db:"created_at"`
+	Requirement       string `json:"requirement" db:"requirement"`
+	CreatedAt         string `json:"createdAt" db:"created_at"`
 }
 
 // IntentClassification is the LLM response for intent classification.
@@ -189,48 +192,48 @@ type IntentClassification struct {
 
 // RequirementExtraction is the LLM response for requirements.
 type RequirementExtraction struct {
-	Procedure     string                  `json:"procedure"`
-	Summary       string                  `json:"summary"`
-	Requirements  []ExtractedRequirement  `json:"requirements"`
+	Procedure    string                 `json:"procedure"`
+	Summary      string                 `json:"summary"`
+	Requirements []ExtractedRequirement `json:"requirements"`
 }
 
 // ExtractedRequirement is a single requirement extracted by the LLM.
 type ExtractedRequirement struct {
-	Name           string             `json:"name"`
-	Label          string             `json:"label"`
-	Required       bool               `json:"required"`
-	Type           string             `json:"type,omitempty"`
-	SourceDocument string             `json:"source_document"`
-	SourceSnippet  string             `json:"source_snippet"`
+	Name           string `json:"name"`
+	Label          string `json:"label"`
+	Required       bool   `json:"required"`
+	Type           string `json:"type,omitempty"`
+	SourceDocument string `json:"source_document"`
+	SourceSnippet  string `json:"source_snippet"`
 }
 
 // RuleStatus represents the result of evaluating a rule.
 type RuleStatus string
 
 const (
-	RuleStatusPass               RuleStatus = "PASS"
-	RuleStatusFail               RuleStatus = "FAIL"
-	RuleStatusNeedsReview        RuleStatus = "NEEDS_REVIEW"
+	RuleStatusPass                 RuleStatus = "PASS"
+	RuleStatusFail                 RuleStatus = "FAIL"
+	RuleStatusNeedsReview          RuleStatus = "NEEDS_REVIEW"
 	RuleStatusInsufficientEvidence RuleStatus = "INSUFFICIENT_EVIDENCE"
-	RuleStatusNotApplicable      RuleStatus = "NOT_APPLICABLE"
+	RuleStatusNotApplicable        RuleStatus = "NOT_APPLICABLE"
 )
 
 // RuleOperator represents the type of comparison operation.
 type RuleOperator string
 
 const (
-	RuleOperatorEquals            RuleOperator = "equals"
-	RuleOperatorNotEquals         RuleOperator = "not_equals"
-	RuleOperatorGreaterThan       RuleOperator = "greater_than"
-	RuleOperatorGreaterOrEqual    RuleOperator = "greater_or_equal"
-	RuleOperatorLessThan          RuleOperator = "less_than"
-	RuleOperatorLessOrEqual       RuleOperator = "less_or_equal"
-	RuleOperatorContains          RuleOperator = "contains"
-	RuleOperatorNotContains       RuleOperator = "not_contains"
-	RuleOperatorExists            RuleOperator = "exists"
-	RuleOperatorNotExists         RuleOperator = "not_exists"
-	RuleOperatorIn                RuleOperator = "in"
-	RuleOperatorNotIn             RuleOperator = "not_in"
+	RuleOperatorEquals         RuleOperator = "equals"
+	RuleOperatorNotEquals      RuleOperator = "not_equals"
+	RuleOperatorGreaterThan    RuleOperator = "greater_than"
+	RuleOperatorGreaterOrEqual RuleOperator = "greater_or_equal"
+	RuleOperatorLessThan       RuleOperator = "less_than"
+	RuleOperatorLessOrEqual    RuleOperator = "less_or_equal"
+	RuleOperatorContains       RuleOperator = "contains"
+	RuleOperatorNotContains    RuleOperator = "not_contains"
+	RuleOperatorExists         RuleOperator = "exists"
+	RuleOperatorNotExists      RuleOperator = "not_exists"
+	RuleOperatorIn             RuleOperator = "in"
+	RuleOperatorNotIn          RuleOperator = "not_in"
 )
 
 // RuleValueType represents the expected type of a field value.
@@ -245,10 +248,10 @@ const (
 
 // RuleSource represents the normative source backing a rule.
 type RuleSource struct {
-	Document    string  `json:"document,omitempty"`
-	ChunkID     *int64  `json:"chunk_id,omitempty"`
-	Snippet     string  `json:"snippet,omitempty"`
-	Requirement string  `json:"requirement,omitempty"`
+	Document    string `json:"document,omitempty"`
+	ChunkID     *int64 `json:"chunk_id,omitempty"`
+	Snippet     string `json:"snippet,omitempty"`
+	Requirement string `json:"requirement,omitempty"`
 }
 
 // RuleDefinition represents a single deterministic rule.
@@ -268,11 +271,11 @@ type RuleDefinition struct {
 
 // RuleInput represents a field input for rule evaluation.
 type RuleInput struct {
-	FieldName   string `json:"field_name"`
-	Value       string `json:"value"`
-	ValueType   string `json:"value_type"`
-	Required    bool   `json:"required"`
-	Missing     bool   `json:"missing"`
+	FieldName string `json:"field_name"`
+	Value     string `json:"value"`
+	ValueType string `json:"value_type"`
+	Required  bool   `json:"required"`
+	Missing   bool   `json:"missing"`
 }
 
 // RuleEvaluationResult represents the result of evaluating a single rule.

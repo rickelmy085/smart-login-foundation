@@ -38,8 +38,10 @@ const dayFmt = new Intl.DateTimeFormat("pt-BR", { weekday: "long", day: "numeric
 
 function statusVariant(s: string) {
   if (s === "generated" || s === "completed") return "bg-success/15 text-success border-success/30";
-  if (s === "blocked" || s === "needs_review") return "bg-destructive/15 text-destructive border-destructive/30";
-  if (s === "ready_to_generate" || s === "collecting_data" || s === "validating") return "bg-warning/20 text-warning-foreground dark:text-warning border-warning/40";
+  if (s === "blocked" || s === "needs_review")
+    return "bg-destructive/15 text-destructive border-destructive/30";
+  if (s === "ready_to_generate" || s === "collecting_data" || s === "validating")
+    return "bg-warning/20 text-warning-foreground dark:text-warning border-warning/40";
   return "bg-muted text-muted-foreground";
 }
 
@@ -80,7 +82,9 @@ function HistoryPage() {
       }
     };
     load();
-    return () => { cancelled = true; };
+    return () => {
+      cancelled = true;
+    };
   }, []);
 
   const groups = useMemo(() => {
@@ -90,9 +94,13 @@ function HistoryPage() {
         filter === "todas" ||
         i.status === filter ||
         (filter === "concluida" && (i.status === "completed" || i.status === "generated")) ||
-        (filter === "em_andamento" && ["collecting_data", "validating", "ready_to_generate", "generating", "detected"].includes(i.status)) ||
+        (filter === "em_andamento" &&
+          ["collecting_data", "validating", "ready_to_generate", "generating", "detected"].includes(
+            i.status,
+          )) ||
         (filter === "arquivada" && (i.status === "blocked" || i.status === "needs_review"));
-      const matchesQuery = !q || i.title.toLowerCase().includes(q) || i.preview.toLowerCase().includes(q);
+      const matchesQuery =
+        !q || i.title.toLowerCase().includes(q) || i.preview.toLowerCase().includes(q);
       return matchesFilter && matchesQuery;
     });
     const map = new Map<string, typeof list>();
@@ -132,7 +140,9 @@ function HistoryPage() {
 
       {loading ? (
         <Card className="shadow-panel">
-          <CardContent className="py-12 text-center text-sm text-muted-foreground">Carregando...</CardContent>
+          <CardContent className="py-12 text-center text-sm text-muted-foreground">
+            Carregando...
+          </CardContent>
         </Card>
       ) : groups.length === 0 ? (
         <Card className="shadow-panel">
@@ -143,7 +153,10 @@ function HistoryPage() {
       ) : (
         groups.map(([day, dayItems]) => (
           <section key={day} aria-labelledby={`day-${day}`}>
-            <h2 id={`day-${day}`} className="mb-3 text-xs font-semibold uppercase tracking-wider text-muted-foreground first-letter:uppercase">
+            <h2
+              id={`day-${day}`}
+              className="mb-3 text-xs font-semibold uppercase tracking-wider text-muted-foreground first-letter:uppercase"
+            >
               {day}
             </h2>
             <ol className="relative space-y-3 border-l border-border pl-6">

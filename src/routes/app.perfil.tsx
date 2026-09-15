@@ -66,7 +66,9 @@ function ProfilePage() {
       <Card className="shadow-panel">
         <CardHeader>
           <CardTitle className="text-base">Dados do colaborador</CardTitle>
-          <CardDescription>Informações sincronizadas do cadastro corporativo (somente leitura).</CardDescription>
+          <CardDescription>
+            Informações sincronizadas do cadastro corporativo (somente leitura).
+          </CardDescription>
         </CardHeader>
         <CardContent className="grid gap-4 sm:grid-cols-2">
           <Field label="Nome completo" value={session.name} />

@@ -130,7 +130,17 @@ func main() {
 			middleware.AuthMiddleware(authService)(http.HandlerFunc(workflowHandler.ListTasks)).ServeHTTP(w, r)
 		}
 	})
-	mux.Handle("/api/tasks/{id}", middleware.AuthMiddleware(authService)(http.HandlerFunc(workflowHandler.GetTask)))
+	mux.Handle("/api/tasks/{id}", middleware.AuthMiddleware(authService)(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.Method {
+		case http.MethodGet:
+			workflowHandler.GetTask(w, r)
+		case http.MethodDelete:
+			workflowHandler.DeleteTask(w, r)
+		default:
+			writeJSON(w, http.StatusMethodNotAllowed, map[string]string{"error": "method not allowed"})
+		}
+	})))
+	mux.Handle("/api/tasks/{id}/status", middleware.AuthMiddleware(authService)(http.HandlerFunc(workflowHandler.UpdateTaskStatus)))
 	mux.Handle("/api/tasks/{id}/process", middleware.AuthMiddleware(authService)(http.HandlerFunc(workflowHandler.ProcessTask)))
 	mux.Handle("/api/tasks/{id}/message", middleware.AuthMiddleware(authService)(http.HandlerFunc(workflowHandler.ProcessMessage)))
 	mux.Handle("/api/tasks/{id}/data", middleware.AuthMiddleware(authService)(http.HandlerFunc(workflowHandler.SetData)))
@@ -192,7 +202,7 @@ func corsMiddleware(allowedOrigins []string) func(http.Handler) http.Handler {
 				slog.Warn("CORS origin not allowed", "origin", origin, "path", r.URL.Path)
 			} else {
 				w.Header().Set("Access-Control-Allow-Origin", allowedOrigin)
-				w.Header().Set("Access-Control-Allow-Methods", "POST, GET, OPTIONS")
+				w.Header().Set("Access-Control-Allow-Methods", "POST, GET, PATCH, DELETE, OPTIONS")
 				w.Header().Set("Access-Control-Allow-Headers", "Content-Type, Authorization")
 				w.Header().Set("Access-Control-Allow-Credentials", "true")
 			}

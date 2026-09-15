@@ -1,7 +1,20 @@
 import { createFileRoute, Link, useParams } from "@tanstack/react-router";
-import { ArrowLeft, Bot, FileText, Loader2, SendHorizonal, Sparkles, Download } from "lucide-react";
+import {
+  ArrowLeft,
+  Bot,
+  FileText,
+  Loader2,
+  SendHorizonal,
+  Sparkles,
+  Download,
+  Calendar,
+  Flag,
+  CheckCircle2,
+} from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
+import { format, isPast, parseISO } from "date-fns";
+import { ptBR } from "date-fns/locale";
 
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -15,8 +28,10 @@ import {
   generateDocument,
   listDocuments,
   getTaskSources,
+  updateTaskStatus,
   type Task,
   type MissingField,
+  type TaskPriority,
 } from "@/lib/workflow";
 
 export const Route = createFileRoute("/app/tarefas/$id")({
@@ -39,13 +54,54 @@ const INTENT_LABEL: Record<string, string> = {
   workflow_execution: "Execução de fluxo",
 };
 
+function priorityVariant(priority: TaskPriority | undefined) {
+  if (priority === "urgente") return "bg-destructive/15 text-destructive border-destructive/30";
+  if (priority === "alta")
+    return "bg-warning/20 text-warning-foreground dark:text-warning border-warning/40";
+  if (priority === "media") return "bg-blue/15 text-blue-foreground border-blue/30";
+  if (priority === "baixa") return "bg-muted text-muted-foreground";
+  return "bg-muted text-muted-foreground";
+}
+
+function priorityLabel(priority: TaskPriority | undefined) {
+  const map: Record<string, string> = {
+    baixa: "Baixa",
+    media: "Média",
+    alta: "Alta",
+    urgente: "Urgente",
+  };
+  return map[priority ?? ""] ?? priority ?? "—";
+}
+
+function formatDeadline(deadline: string | undefined) {
+  if (!deadline) return null;
+  try {
+    const date = parseISO(deadline);
+    return format(date, "dd/MM/yyyy", { locale: ptBR });
+  } catch {
+    return deadline;
+  }
+}
+
+function isDeadlineOverdue(deadline: string | undefined) {
+  if (!deadline) return false;
+  try {
+    const date = parseISO(deadline);
+    return isPast(date);
+  } catch {
+    return false;
+  }
+}
+
 function TaskDetailPage() {
   const { id } = useParams({ from: "/app/tarefas/$id" });
   const [task, setTask] = useState<Task | null>(null);
   const [loading, setLoading] = useState(true);
   const [processing, setProcessing] = useState(false);
   const [message, setMessage] = useState("");
-  const [logs, setLogs] = useState<Array<{ text: string; kind: "user" | "assistant" | "system" }>>([]);
+  const [logs, setLogs] = useState<Array<{ text: string; kind: "user" | "assistant" | "system" }>>(
+    [],
+  );
   const endRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -56,10 +112,7 @@ function TaskDetailPage() {
         const data = await getTask(id);
         if (!cancelled) {
           setTask(data);
-          setLogs((prev) => [
-            ...prev,
-            { text: `Status: ${data.status}`, kind: "system" },
-          ]);
+          setLogs((prev) => [...prev, { text: `Status: ${data.status}`, kind: "system" }]);
         }
       } catch (err) {
         const msg = err instanceof Error ? err.message : "Erro ao carregar tarefa.";
@@ -69,7 +122,9 @@ function TaskDetailPage() {
       }
     };
     load();
-    return () => { cancelled = true; };
+    return () => {
+      cancelled = true;
+    };
   }, [id]);
 
   useEffect(() => {
@@ -111,10 +166,7 @@ function TaskDetailPage() {
     setMessage("");
     try {
       const res = await sendMessage(id, text);
-      setLogs((prev) => [
-        ...prev,
-        { text: res.answer, kind: "assistant" },
-      ]);
+      setLogs((prev) => [...prev, { text: res.answer, kind: "assistant" }]);
       await refresh();
     } catch (err) {
       const msg = err instanceof Error ? err.message : "Erro ao enviar mensagem.";
@@ -187,11 +239,41 @@ function TaskDetailPage() {
         <div className="min-w-0">
           <h2 className="truncate text-xl font-bold">{task.originalRequest}</h2>
           <p className="text-xs text-muted-foreground">
-            {INTENT_LABEL[task.intent] ?? task.intent} · {new Date(task.createdAt).toLocaleString("pt-BR")}
+            {INTENT_LABEL[task.intent] ?? task.intent} ·{" "}
+            {new Date(task.createdAt).toLocaleString("pt-BR")}
           </p>
         </div>
-        <div className="ml-auto">
-          <Badge variant="outline" className={task.status === "generated" || task.status === "completed" ? "bg-success/15 text-success border-success/30" : task.status === "blocked" ? "bg-destructive/15 text-destructive border-destructive/30" : "bg-warning/20 text-warning-foreground dark:text-warning border-warning/40"}>
+        <div className="ml-auto flex items-center gap-2">
+          {task.priority && (
+            <Badge variant="outline" className={priorityVariant(task.priority)}>
+              <Flag className="mr-1 size-3" aria-hidden="true" />
+              {priorityLabel(task.priority)}
+            </Badge>
+          )}
+          {task.deadline && (
+            <Badge
+              variant="outline"
+              className={
+                isDeadlineOverdue(task.deadline) && task.status !== "completed"
+                  ? "bg-destructive/15 text-destructive border-destructive/30"
+                  : "bg-muted text-muted-foreground"
+              }
+            >
+              <Calendar className="mr-1 size-3" aria-hidden="true" />
+              {formatDeadline(task.deadline)}
+              {isDeadlineOverdue(task.deadline) && task.status !== "completed" && " (Atrasada)"}
+            </Badge>
+          )}
+          <Badge
+            variant="outline"
+            className={
+              task.status === "generated" || task.status === "completed"
+                ? "bg-success/15 text-success border-success/30"
+                : task.status === "blocked"
+                  ? "bg-destructive/15 text-destructive border-destructive/30"
+                  : "bg-warning/20 text-warning-foreground dark:text-warning border-warning/40"
+            }
+          >
             {task.status}
           </Badge>
         </div>
@@ -255,7 +337,12 @@ function TaskDetailPage() {
                 rows={2}
                 className="min-h-0 resize-none border-0 bg-transparent shadow-none focus-visible:ring-0"
               />
-              <Button type="submit" size="icon" disabled={!message.trim() || processing} aria-label="Enviar">
+              <Button
+                type="submit"
+                size="icon"
+                disabled={!message.trim() || processing}
+                aria-label="Enviar"
+              >
                 <SendHorizonal />
               </Button>
             </form>
@@ -271,6 +358,25 @@ function TaskDetailPage() {
               Gerar documento
             </Button>
           )}
+          {task.status !== "completed" && (
+            <Button
+              variant="success"
+              onClick={async () => {
+                try {
+                  await updateTaskStatus(task.id, "completed");
+                  toast.success("Tarefa marcada como concluída.");
+                  await refresh();
+                } catch (err) {
+                  const msg = err instanceof Error ? err.message : "Erro ao concluir tarefa.";
+                  toast.error(msg);
+                }
+              }}
+              disabled={processing}
+            >
+              <CheckCircle2 className="mr-2 size-4" aria-hidden="true" />
+              Marcar como concluída
+            </Button>
+          )}
         </CardContent>
       </Card>
 
@@ -281,7 +387,11 @@ function TaskDetailPage() {
           </CardHeader>
           <CardContent className="flex flex-wrap gap-2">
             {task.missingFields.map((f) => (
-              <Badge key={f.fieldName} variant="outline" className="border-warning/40 text-warning-foreground">
+              <Badge
+                key={f.fieldName}
+                variant="outline"
+                className="border-warning/40 text-warning-foreground"
+              >
                 {f.label || f.fieldName}
               </Badge>
             ))}
@@ -299,10 +409,7 @@ function TaskDetailPage() {
               variant="secondary"
               onClick={async () => {
                 try {
-                  await downloadDocument(
-                    `/api/documents/${id}/docx`,
-                    `ABIS-documento-${id}.docx`,
-                  );
+                  await downloadDocument(`/api/documents/${id}/docx`, `ABIS-documento-${id}.docx`);
                 } catch (err) {
                   toast.error(err instanceof Error ? err.message : "Erro ao baixar documento.");
                 }
@@ -315,10 +422,7 @@ function TaskDetailPage() {
               variant="secondary"
               onClick={async () => {
                 try {
-                  await downloadDocument(
-                    `/api/documents/${id}/pdf`,
-                    `ABIS-documento-${id}.pdf`,
-                  );
+                  await downloadDocument(`/api/documents/${id}/pdf`, `ABIS-documento-${id}.pdf`);
                 } catch (err) {
                   toast.error(err instanceof Error ? err.message : "Erro ao baixar documento.");
                 }
@@ -337,11 +441,18 @@ function TaskDetailPage() {
         </CardHeader>
         <CardContent className="space-y-3">
           {logs.map((log, idx) => (
-            <div key={idx} className={`flex items-start gap-3 ${log.kind === "user" ? "flex-row-reverse" : ""}`}>
-              <span className={`mt-1 grid size-7 shrink-0 place-items-center rounded-full text-[10px] ${log.kind === "user" ? "bg-primary text-primary-foreground" : log.kind === "assistant" ? "bg-muted" : "bg-accent text-accent-foreground"}`}>
+            <div
+              key={idx}
+              className={`flex items-start gap-3 ${log.kind === "user" ? "flex-row-reverse" : ""}`}
+            >
+              <span
+                className={`mt-1 grid size-7 shrink-0 place-items-center rounded-full text-[10px] ${log.kind === "user" ? "bg-primary text-primary-foreground" : log.kind === "assistant" ? "bg-muted" : "bg-accent text-accent-foreground"}`}
+              >
                 <Bot className="size-3.5" aria-hidden="true" />
               </span>
-              <div className={`max-w-[85%] rounded-2xl px-3 py-2 text-xs leading-relaxed ${log.kind === "user" ? "bg-primary text-primary-foreground" : log.kind === "assistant" ? "border border-border bg-card" : "bg-muted text-muted-foreground"}`}>
+              <div
+                className={`max-w-[85%] rounded-2xl px-3 py-2 text-xs leading-relaxed ${log.kind === "user" ? "bg-primary text-primary-foreground" : log.kind === "assistant" ? "border border-border bg-card" : "bg-muted text-muted-foreground"}`}
+              >
                 {log.text}
               </div>
             </div>

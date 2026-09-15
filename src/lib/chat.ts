@@ -55,6 +55,7 @@ export {
   sendTaskMessage,
   generateDocument,
   listHistory,
+<<<<<<< HEAD
   agentProcess,
   agentResume,
   agentHumanInput,
@@ -62,3 +63,6 @@ export {
   listAgentTools,
   getAgentToolSchema,
 };
+=======
+};
+>>>>>>> a424274 (feat(fullstack): enhance workflow management with priority and deadlines)

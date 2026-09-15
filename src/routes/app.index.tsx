@@ -6,11 +6,16 @@ import {
   FileText,
   MessageSquareText,
   Sparkles,
+<<<<<<< HEAD
   CheckCircle,
   AlertTriangle,
   Target,
 } from "lucide-react";
 import { useEffect, useState, useMemo } from "react";
+=======
+  TrendingUp,
+} from "lucide-react";
+>>>>>>> a424274 (feat(fullstack): enhance workflow management with priority and deadlines)
 
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -186,6 +191,7 @@ function DashboardPage() {
           <CardContent>
             {statsState === "loading" ? (
               <Skeleton className="h-28 w-full" />
+<<<<<<< HEAD
             ) : weeklyActivity.length === 0 ||
               weeklyActivity.every((d) => d.consultas === 0) ? (
               <div className="py-8 text-center">
@@ -231,6 +237,31 @@ function DashboardPage() {
                   <span>{history.length} interações no total</span>
                 </div>
               </>
+=======
+            ) : weeklyActivity.length === 0 || weeklyActivity.every((d) => d.consultas === 0) ? (
+              <p className="py-6 text-center text-sm text-muted-foreground">
+                Sem dados de atividade.
+              </p>
+            ) : (
+              <ul className="flex items-end gap-2" aria-label="Gráfico de consultas por dia">
+                {weeklyActivity.map((d) => (
+                  <li key={d.day} className="flex flex-1 flex-col items-center gap-2">
+                    <div className="flex h-28 w-full items-end">
+                      <div
+                        className="w-full rounded-t-md bg-primary/85 transition-[height] duration-500"
+                        style={{
+                          height: `${max ? (d.consultas / max) * 100 : 0}%`,
+                          minHeight: d.consultas ? 6 : 2,
+                        }}
+                        role="img"
+                        aria-label={`${d.day}: ${d.consultas} consultas`}
+                      />
+                    </div>
+                    <span className="text-[11px] text-muted-foreground">{d.day}</span>
+                  </li>
+                ))}
+              </ul>
+>>>>>>> a424274 (feat(fullstack): enhance workflow management with priority and deadlines)
             )}
           </CardContent>
         </Card>
@@ -345,6 +376,7 @@ function DashboardPage() {
               <p className="mt-1 text-sm text-muted-foreground">
                 Suas conversas e documentos aparecerão aqui.
               </p>
+<<<<<<< HEAD
               <Button asChild className="mt-4" size="sm">
                 <Link to="/app/copilot">
                   <Sparkles className="mr-2 size-4" aria-hidden="true" />
@@ -361,6 +393,38 @@ function DashboardPage() {
           </div>
         )}
       </section>
+=======
+            ) : history.length === 0 ? (
+              <p className="py-6 text-center text-sm text-muted-foreground">
+                Nenhuma interação registrada ainda.
+              </p>
+            ) : (
+              <ul className="divide-y divide-border">
+                {history.slice(0, 4).map((item) => (
+                  <li key={item.id} className="flex items-start gap-3 py-3 first:pt-0 last:pb-0">
+                    <span className="mt-0.5 grid size-8 shrink-0 place-items-center rounded-lg bg-muted">
+                      <Bot className="size-4 text-muted-foreground" aria-hidden={true} />
+                    </span>
+                    <div className="min-w-0 flex-1">
+                      <p className="truncate text-sm font-medium">{item.title}</p>
+                      <p className="truncate text-xs text-muted-foreground">{item.preview}</p>
+                    </div>
+                    <div className="hidden shrink-0 flex-col items-end gap-1 sm:flex">
+                      <Badge variant="outline" className={statusVariant(item.status)}>
+                        {statusLabel(item.status)}
+                      </Badge>
+                      <span className="text-[11px] text-muted-foreground">
+                        {new Date(item.createdAt).toLocaleString("pt-BR")}
+                      </span>
+                    </div>
+                  </li>
+                ))}
+              </ul>
+            )}
+          </CardContent>
+        </Card>
+      </div>
+>>>>>>> a424274 (feat(fullstack): enhance workflow management with priority and deadlines)
 
       <section aria-labelledby="sugestoes" className="pt-4">
         <h2 id="sugestoes" className="mb-3 text-base font-semibold">
@@ -525,3 +589,31 @@ function computeWeeklyActivity(history: HistoryItem[]) {
     return { day, consultas: counts[idx] };
   });
 }
+<<<<<<< HEAD
+=======
+
+function statusVariant(status: string) {
+  if (status === "generated" || status === "completed")
+    return "bg-success/15 text-success border-success/30";
+  if (status === "blocked" || status === "needs_review")
+    return "bg-destructive/15 text-destructive border-destructive/30";
+  if (status === "ready_to_generate" || status === "collecting_data" || status === "validating")
+    return "bg-warning/20 text-warning-foreground dark:text-warning border-warning/40";
+  return "bg-muted text-muted-foreground";
+}
+
+function statusLabel(status: string) {
+  const map: Record<string, string> = {
+    detected: "Detectada",
+    collecting_data: "Coletando dados",
+    validating: "Validando",
+    ready_to_generate: "Pronta para gerar",
+    generating: "Gerando",
+    generated: "Gerada",
+    needs_review: "Revisão",
+    completed: "Concluída",
+    blocked: "Bloqueada",
+  };
+  return map[status] ?? status;
+}
+>>>>>>> a424274 (feat(fullstack): enhance workflow management with priority and deadlines)

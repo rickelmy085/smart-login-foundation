@@ -20,15 +20,27 @@ func NewWorkflowRepo(db *sql.DB) *WorkflowRepo {
 
 // CreateTask inserts a new workflow task.
 func (r *WorkflowRepo) CreateTask(ctx context.Context, t models.WorkflowTask) error {
-	fmt.Printf("[REPO] CreateTask taskID=%s employeeID=%s intent=%s\n", t.ID, t.EmployeeID, t.Intent)
+	fmt.Printf("[REPO] CreateTask taskID=%s employeeID=%s intent=%s deadline=%v priority=%s origin=%s\n", t.ID, t.EmployeeID, t.Intent, t.Deadline, t.Priority, t.Origin)
 	var templateID any
 	if t.TemplateID != "" {
 		templateID = t.TemplateID
 	}
+	var deadline any
+	if t.Deadline != nil {
+		deadline = *t.Deadline
+	}
+	var priority any
+	if t.Priority != "" {
+		priority = t.Priority
+	}
+	var origin any
+	if t.Origin != "" {
+		origin = t.Origin
+	}
 	_, err := r.db.ExecContext(ctx, `
-		INSERT INTO workflow_tasks (id, employee_id, intent, procedure, status, original_request, template_id, template_key)
-		VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-	`, t.ID, t.EmployeeID, t.Intent, t.Procedure, t.Status, t.OriginalRequest, templateID, t.TemplateKey)
+		INSERT INTO workflow_tasks (id, employee_id, intent, procedure, status, original_request, template_id, template_key, deadline, priority, origin)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+	`, t.ID, t.EmployeeID, t.Intent, t.Procedure, t.Status, t.OriginalRequest, templateID, t.TemplateKey, deadline, priority, origin)
 	if err != nil {
 		fmt.Printf("[REPO] CreateTask erro: %v\n", err)
 		return err
@@ -41,13 +53,13 @@ func (r *WorkflowRepo) CreateTask(ctx context.Context, t models.WorkflowTask) er
 func (r *WorkflowRepo) GetTask(ctx context.Context, id string) (models.WorkflowTask, error) {
 	fmt.Printf("[REPO] GetTask taskID=%s\n", id)
 	var t models.WorkflowTask
-	var templateID sql.NullString
+	var templateID, deadline, priority, origin sql.NullString
 	err := r.db.QueryRowContext(ctx, `
-		SELECT id, employee_id, intent, procedure, status, original_request, template_id, COALESCE(template_key, ''), created_at, updated_at
+		SELECT id, employee_id, intent, procedure, status, original_request, template_id, COALESCE(template_key, ''), COALESCE(deadline, ''), COALESCE(priority, ''), COALESCE(origin, ''), created_at, updated_at
 		FROM workflow_tasks WHERE id = ?
 	`, id).Scan(
 		&t.ID, &t.EmployeeID, &t.Intent, &t.Procedure, &t.Status,
-		&t.OriginalRequest, &templateID, &t.TemplateKey, &t.CreatedAt, &t.UpdatedAt,
+		&t.OriginalRequest, &templateID, &t.TemplateKey, &deadline, &priority, &origin, &t.CreatedAt, &t.UpdatedAt,
 	)
 	if err != nil {
 		fmt.Printf("[REPO] GetTask erro: %v\n", err)
@@ -56,13 +68,23 @@ func (r *WorkflowRepo) GetTask(ctx context.Context, id string) (models.WorkflowT
 	if templateID.Valid {
 		t.TemplateID = templateID.String
 	}
-	fmt.Printf("[REPO] GetTask sucesso taskID=%s status=%s templateKey=%s\n", id, t.Status, t.TemplateKey)
+	if deadline.Valid && deadline.String != "" {
+		t.Deadline = &deadline.String
+	}
+	if priority.Valid && priority.String != "" {
+		t.Priority = priority.String
+	}
+	if origin.Valid && origin.String != "" {
+		t.Origin = origin.String
+	}
+	fmt.Printf("[REPO] GetTask sucesso taskID=%s status=%s templateKey=%s deadline=%v priority=%s origin=%s\n", id, t.Status, t.TemplateKey, t.Deadline, t.Priority, t.Origin)
 	return t, nil
 }
 
 // UpdateTaskStatus updates the status and optionally the template_id of a task.
 func (r *WorkflowRepo) UpdateTaskStatus(ctx context.Context, id string, status models.TaskStatus, templateID string) error {
 	fmt.Printf("[REPO] UpdateTaskStatus taskID=%s status=%s templateID=%s\n", id, status, templateID)
+<<<<<<< HEAD
 	
 	if templateID != "" {
 		_, err := r.db.ExecContext(ctx, `
@@ -82,6 +104,19 @@ func (r *WorkflowRepo) UpdateTaskStatus(ctx context.Context, id string, status m
 			fmt.Printf("[REPO] UpdateTaskStatus erro: %v\n", err)
 			return err
 		}
+=======
+	var templateIDParam any
+	if templateID != "" {
+		templateIDParam = templateID
+	}
+	_, err := r.db.ExecContext(ctx, `
+		UPDATE workflow_tasks SET status = ?, template_id = ?, updated_at = datetime('now')
+		WHERE id = ?
+	`, status, templateIDParam, id)
+	if err != nil {
+		fmt.Printf("[REPO] UpdateTaskStatus erro: %v\n", err)
+		return err
+>>>>>>> a424274 (feat(fullstack): enhance workflow management with priority and deadlines)
 	}
 	fmt.Printf("[REPO] UpdateTaskStatus sucesso taskID=%s\n", id)
 	return nil
@@ -90,10 +125,14 @@ func (r *WorkflowRepo) UpdateTaskStatus(ctx context.Context, id string, status m
 // UpdateTaskTemplate updates only the template_id.
 func (r *WorkflowRepo) UpdateTaskTemplate(ctx context.Context, id, templateID string) error {
 	fmt.Printf("[REPO] UpdateTaskTemplate taskID=%s templateID=%s\n", id, templateID)
+	var templateIDParam any
+	if templateID != "" {
+		templateIDParam = templateID
+	}
 	_, err := r.db.ExecContext(ctx, `
 		UPDATE workflow_tasks SET template_id = ?, updated_at = datetime('now')
 		WHERE id = ?
-	`, templateID, id)
+	`, templateIDParam, id)
 	if err != nil {
 		fmt.Printf("[REPO] UpdateTaskTemplate erro: %v\n", err)
 		return err
@@ -552,12 +591,12 @@ func (r *WorkflowRepo) GetDocumentSources(ctx context.Context, runID string) ([]
 
 // --- Tasks query helpers ---
 
-// GetTasksByEmployee returns recent tasks for an employee.
+// GetTasksByEmployee returns recent manual tasks for an employee.
 func (r *WorkflowRepo) GetTasksByEmployee(ctx context.Context, employeeID string) ([]models.WorkflowTask, error) {
 	fmt.Printf("[REPO] GetTasksByEmployee employeeID=%s\n", employeeID)
 	rows, err := r.db.QueryContext(ctx, `
-		SELECT id, employee_id, intent, procedure, status, original_request, template_id, created_at, updated_at
-		FROM workflow_tasks WHERE employee_id = ? ORDER BY created_at DESC LIMIT 50
+		SELECT id, employee_id, intent, procedure, status, original_request, template_id, COALESCE(deadline, ''), COALESCE(priority, ''), COALESCE(origin, ''), created_at, updated_at
+		FROM workflow_tasks WHERE employee_id = ? AND origin = 'manual' ORDER BY created_at DESC LIMIT 50
 	`, employeeID)
 	if err != nil {
 		fmt.Printf("[REPO] GetTasksByEmployee erro: %v\n", err)
@@ -568,13 +607,26 @@ func (r *WorkflowRepo) GetTasksByEmployee(ctx context.Context, employeeID string
 	var result []models.WorkflowTask
 	for rows.Next() {
 		var t models.WorkflowTask
+		var templateID, deadline, priority, origin sql.NullString
 		err := rows.Scan(
 			&t.ID, &t.EmployeeID, &t.Intent, &t.Procedure, &t.Status,
-			&t.OriginalRequest, &t.TemplateID, &t.CreatedAt, &t.UpdatedAt,
+			&t.OriginalRequest, &templateID, &deadline, &priority, &origin, &t.CreatedAt, &t.UpdatedAt,
 		)
 		if err != nil {
 			fmt.Printf("[REPO] GetTasksByEmployee erro scan: %v\n", err)
 			return nil, err
+		}
+		if templateID.Valid {
+			t.TemplateID = templateID.String
+		}
+		if deadline.Valid && deadline.String != "" {
+			t.Deadline = &deadline.String
+		}
+		if priority.Valid && priority.String != "" {
+			t.Priority = priority.String
+		}
+		if origin.Valid && origin.String != "" {
+			t.Origin = origin.String
 		}
 		result = append(result, t)
 	}
@@ -713,6 +765,7 @@ func (r *WorkflowRepo) GetRuleEvaluationsByTask(ctx context.Context, taskID stri
 	return result, rows.Err()
 }
 
+<<<<<<< HEAD
 // --- Workflow Steps ---
 
 // CreateWorkflowStep creates a new workflow step.
@@ -785,3 +838,16 @@ func (r *WorkflowRepo) GetWorkflowStepsByTask(ctx context.Context, taskID string
 }
 
 // IntToString is a helper for converting.
+=======
+// DeleteTask deletes a task by ID (ownership verified by caller).
+func (r *WorkflowRepo) DeleteTask(ctx context.Context, id string) error {
+	fmt.Printf("[REPO] DeleteTask taskID=%s\n", id)
+	_, err := r.db.ExecContext(ctx, `DELETE FROM workflow_tasks WHERE id = ?`, id)
+	if err != nil {
+		fmt.Printf("[REPO] DeleteTask erro: %v\n", err)
+		return err
+	}
+	fmt.Printf("[REPO] DeleteTask sucesso taskID=%s\n", id)
+	return nil
+}
+>>>>>>> a424274 (feat(fullstack): enhance workflow management with priority and deadlines)

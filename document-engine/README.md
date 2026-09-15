@@ -28,6 +28,7 @@ DOCX / PDF
 **Principle**: Go decides WHAT to generate and WHY. Python decides HOW to render it.
 
 Python does NOT:
+
 - Consult normatives
 - Classify intent
 - Decide business rules
@@ -67,16 +68,16 @@ Copy `.env.example` to `.env` and adjust values:
 cp .env.example .env
 ```
 
-| Variable | Default | Description |
-|----------|---------|-------------|
-| `DOCUMENT_ENGINE_HOST` | `127.0.0.1` | Bind host |
-| `DOCUMENT_ENGINE_PORT` | `8090` | Bind port |
-| `DOCUMENT_ENGINE_INTERNAL_SECRET` | `change-me-in-production` | Internal auth secret |
-| `DOCUMENT_ENGINE_OUTPUT_DIR` | `./output` | Output directory |
-| `DOCUMENT_ENGINE_TEMPLATE_DIR` | `./templates` | Templates directory |
-| `DOCUMENT_ENGINE_PDF_ENABLED` | `true` | Enable PDF generation |
-| `DOCUMENT_ENGINE_PDF_TIMEOUT_SECONDS` | `30` | LibreOffice timeout |
-| `DOCUMENT_ENGINE_LOG_LEVEL` | `INFO` | Log level |
+| Variable                              | Default                   | Description           |
+| ------------------------------------- | ------------------------- | --------------------- |
+| `DOCUMENT_ENGINE_HOST`                | `127.0.0.1`               | Bind host             |
+| `DOCUMENT_ENGINE_PORT`                | `8090`                    | Bind port             |
+| `DOCUMENT_ENGINE_INTERNAL_SECRET`     | `change-me-in-production` | Internal auth secret  |
+| `DOCUMENT_ENGINE_OUTPUT_DIR`          | `./output`                | Output directory      |
+| `DOCUMENT_ENGINE_TEMPLATE_DIR`        | `./templates`             | Templates directory   |
+| `DOCUMENT_ENGINE_PDF_ENABLED`         | `true`                    | Enable PDF generation |
+| `DOCUMENT_ENGINE_PDF_TIMEOUT_SECONDS` | `30`                      | LibreOffice timeout   |
+| `DOCUMENT_ENGINE_LOG_LEVEL`           | `INFO`                    | Log level             |
 
 ## Running
 
@@ -202,11 +203,7 @@ templates/
     "justificativa",
     "categoria_produto"
   ],
-  "optional_fields": [
-    "numero_solicitacao",
-    "aprovacao_cade",
-    "observacoes"
-  ],
+  "optional_fields": ["numero_solicitacao", "aprovacao_cade", "observacoes"],
   "formats": ["docx", "pdf"]
 }
 ```
@@ -227,24 +224,25 @@ DOCX → LibreOffice --headless --convert-to pdf → PDF
 ```
 
 If LibreOffice is not installed or `DOCUMENT_ENGINE_PDF_ENABLED=false`:
+
 - DOCX is still generated normally
 - A warning is returned in the response: `PDF_UNAVAILABLE`
 - The service does NOT fail — PDF is optional
 
 ## Error Codes
 
-| Code | HTTP | Meaning |
-|------|------|---------|
-| `INVALID_SPEC` | 422 | Schema validation failed |
-| `MISSING_REQUIRED_FIELD` | 400 | Required field missing |
-| `TEMPLATE_NOT_FOUND` | 404 | Template key does not exist |
-| `TEMPLATE_VERSION_NOT_FOUND` | 404 | Version does not exist |
-| `GENERATION_FAILED` | 500 | DOCX generation error |
-| `EMPTY_OUTPUT` | 500 | Generated file is empty |
-| `INVALID_OUTPUT` | 500 | Generated file is invalid |
-| `PDF_GENERATION_FAILED` | warning | PDF conversion failed |
-| `PDF_UNAVAILABLE` | warning | LibreOffice not found |
-| `INTERNAL_ERROR` | 500 | Unexpected error |
+| Code                         | HTTP    | Meaning                     |
+| ---------------------------- | ------- | --------------------------- |
+| `INVALID_SPEC`               | 422     | Schema validation failed    |
+| `MISSING_REQUIRED_FIELD`     | 400     | Required field missing      |
+| `TEMPLATE_NOT_FOUND`         | 404     | Template key does not exist |
+| `TEMPLATE_VERSION_NOT_FOUND` | 404     | Version does not exist      |
+| `GENERATION_FAILED`          | 500     | DOCX generation error       |
+| `EMPTY_OUTPUT`               | 500     | Generated file is empty     |
+| `INVALID_OUTPUT`             | 500     | Generated file is invalid   |
+| `PDF_GENERATION_FAILED`      | warning | PDF conversion failed       |
+| `PDF_UNAVAILABLE`            | warning | LibreOffice not found       |
+| `INTERNAL_ERROR`             | 500     | Unexpected error            |
 
 ## Testing
 
@@ -282,6 +280,7 @@ pytest -q
 ## Future Integration (Phase 2)
 
 The Go backend will:
+
 1. Build a `DocumentSpec` from WorkflowTask + data + requirements
 2. `POST /generate` to this service
 3. Save the returned files to `data/documents/{runID}/`

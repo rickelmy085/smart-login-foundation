@@ -27,7 +27,9 @@ func NewWorkflowHandler(s *service.WorkflowService, repo *repository.WorkflowRep
 // Request bodies
 
 type CreateTaskRequest struct {
-	Question string `json:"question"`
+	Question string  `json:"question"`
+	Deadline *string `json:"deadline,omitempty"`
+	Priority string  `json:"priority,omitempty"`
 }
 
 type ProcessMessageRequest struct {
@@ -42,43 +44,45 @@ type SetDataRequest struct {
 // Response types
 
 type TaskResponse struct {
-	ID            string                             `json:"id"`
-	Intent        string                             `json:"intent"`
-	Procedure     string                             `json:"procedure"`
-	Status        string                             `json:"status"`
-	OriginalRequest string                          `json:"originalRequest"`
-	TemplateID    string                             `json:"templateId"`
-	Requirements  []RequirementResponse              `json:"requirements"`
-	Data          map[string]string                  `json:"data"`
-	Template      *TemplateResponse                  `json:"template,omitempty"`
-	MissingFields []service.MissingField             `json:"missingFields,omitempty"`
-	CreatedAt     string                             `json:"createdAt"`
-	UpdatedAt     string                             `json:"updatedAt"`
+	ID              string                 `json:"id"`
+	Intent          string                 `json:"intent"`
+	Procedure       string                 `json:"procedure"`
+	Status          string                 `json:"status"`
+	OriginalRequest string                 `json:"originalRequest"`
+	TemplateID      string                 `json:"templateId"`
+	Requirements    []RequirementResponse  `json:"requirements"`
+	Data            map[string]string      `json:"data"`
+	Template        *TemplateResponse      `json:"template,omitempty"`
+	MissingFields   []service.MissingField `json:"missingFields,omitempty"`
+	CreatedAt       string                 `json:"createdAt"`
+	UpdatedAt       string                 `json:"updatedAt"`
+	Deadline        *string                `json:"deadline,omitempty"`
+	Priority        string                 `json:"priority,omitempty"`
 }
 
 type RequirementResponse struct {
-	ID             string  `json:"id"`
-	Name           string  `json:"name"`
-	Label          string  `json:"label"`
-	Required       bool    `json:"required"`
-	SourceDocument string  `json:"sourceDocument,omitempty"`
-	SourceSnippet  string  `json:"sourceSnippet,omitempty"`
+	ID             string `json:"id"`
+	Name           string `json:"name"`
+	Label          string `json:"label"`
+	Required       bool   `json:"required"`
+	SourceDocument string `json:"sourceDocument,omitempty"`
+	SourceSnippet  string `json:"sourceSnippet,omitempty"`
 }
 
 type TemplateResponse struct {
-	ID           string                 `json:"id"`
-	Name         string                 `json:"name"`
-	Description  string                 `json:"description"`
-	DocumentType string                 `json:"documentType"`
-	Version      string                 `json:"version"`
+	ID           string                  `json:"id"`
+	Name         string                  `json:"name"`
+	Description  string                  `json:"description"`
+	DocumentType string                  `json:"documentType"`
+	Version      string                  `json:"version"`
 	Fields       []TemplateFieldResponse `json:"fields"`
 }
 
 type TemplateFieldResponse struct {
-	FieldName        string  `json:"fieldName"`
-	Label            string  `json:"label"`
-	Type             string  `json:"type"`
-	Required         bool    `json:"required"`
+	FieldName         string `json:"fieldName"`
+	Label             string `json:"label"`
+	Type              string `json:"type"`
+	Required          bool   `json:"required"`
 	NormativeDocument string `json:"normativeDocument,omitempty"`
 }
 
@@ -89,20 +93,20 @@ type CreateTaskResponse struct {
 }
 
 type ProcessMessageResponse struct {
-	Answer      string                 `json:"answer"`
-	TaskStatus  string                 `json:"taskStatus"`
-	ReadyToGen  bool                   `json:"readyToGenerate"`
+	Answer        string                 `json:"answer"`
+	TaskStatus    string                 `json:"taskStatus"`
+	ReadyToGen    bool                   `json:"readyToGenerate"`
 	MissingFields []service.MissingField `json:"missingFields,omitempty"`
 }
 
 type DocumentRunResponse struct {
-	ID            string `json:"id"`
-	TemplateID    string `json:"templateId"`
+	ID              string `json:"id"`
+	TemplateID      string `json:"templateId"`
 	TemplateVersion string `json:"templateVersion"`
-	Status        string `json:"status"`
-	DocxPath      string `json:"docxPath,omitempty"`
-	PdfPath       string `json:"pdfPath,omitempty"`
-	CreatedAt     string `json:"createdAt"`
+	Status          string `json:"status"`
+	DocxPath        string `json:"docxPath,omitempty"`
+	PdfPath         string `json:"pdfPath,omitempty"`
+	CreatedAt       string `json:"createdAt"`
 }
 
 // POST /api/tasks
@@ -123,9 +127,9 @@ func (h *WorkflowHandler) CreateTask(w http.ResponseWriter, r *http.Request) {
 	}
 
 	employeeID := r.Context().Value("employee_id").(string)
-	fmt.Printf("[WORKFLOW] CreateTask employeeID=%s question=%s\n", employeeID, body.Question)
+	fmt.Printf("[WORKFLOW] CreateTask employeeID=%s question=%s deadline=%v priority=%s\n", employeeID, body.Question, body.Deadline, body.Priority)
 
-	taskID, err := h.svc.CreateTask(r.Context(), employeeID, body.Question)
+	taskID, err := h.svc.CreateTask(r.Context(), employeeID, body.Question, body.Deadline, body.Priority, "manual")
 	if err != nil {
 		fmt.Printf("[WORKFLOW] CreateTask erro no service: %v\n", err)
 		writeJSON(w, http.StatusBadRequest, map[string]string{"error": err.Error()})
@@ -192,14 +196,16 @@ func (h *WorkflowHandler) ListTasks(w http.ResponseWriter, r *http.Request) {
 	for _, t := range tasks {
 		// Build minimal response
 		resp = append(resp, TaskResponse{
-			ID:            t.ID,
-			Intent:        string(t.Intent),
-			Procedure:     t.Procedure,
-			Status:        string(t.Status),
+			ID:              t.ID,
+			Intent:          string(t.Intent),
+			Procedure:       t.Procedure,
+			Status:          string(t.Status),
 			OriginalRequest: t.OriginalRequest,
-			TemplateID:    t.TemplateID,
-			CreatedAt:     t.CreatedAt,
-			UpdatedAt:     t.UpdatedAt,
+			TemplateID:      t.TemplateID,
+			CreatedAt:       t.CreatedAt,
+			UpdatedAt:       t.UpdatedAt,
+			Deadline:        t.Deadline,
+			Priority:        t.Priority,
 		})
 	}
 
@@ -242,8 +248,8 @@ func (h *WorkflowHandler) ProcessTask(w http.ResponseWriter, r *http.Request) {
 	fmt.Printf("[WORKFLOW] ProcessTask sucesso taskID=%s answered=%v blocked=%v\n", taskID, result.Answered, result.Blocked)
 
 	resp := map[string]any{
-		"taskId":         taskID,
-		"requirements":   result.Requirements,
+		"taskId":          taskID,
+		"requirements":    result.Requirements,
 		"readyToGenerate": false,
 	}
 
@@ -263,11 +269,11 @@ func (h *WorkflowHandler) ProcessTask(w http.ResponseWriter, r *http.Request) {
 	sources := make([]map[string]any, 0, len(result.Sources))
 	for _, hit := range result.Sources {
 		sources = append(sources, map[string]any{
-			"title":       hit.Document.Title,
-			"snippet":     hit.Snippet,
-			"chunkOrd":    hit.Chunk.Ord,
-			"score":       hit.Score,
-			"source":      hit.Document.SourcePath,
+			"title":    hit.Document.Title,
+			"snippet":  hit.Snippet,
+			"chunkOrd": hit.Chunk.Ord,
+			"score":    hit.Score,
+			"source":   hit.Document.SourcePath,
 		})
 	}
 	resp["sources"] = sources
@@ -333,9 +339,9 @@ func (h *WorkflowHandler) ProcessMessage(w http.ResponseWriter, r *http.Request)
 	missing, _ := h.svc.GetMissingFields(r.Context(), taskID)
 
 	writeJSON(w, http.StatusOK, ProcessMessageResponse{
-		Answer:       result.Answer,
-		TaskStatus:   "",
-		ReadyToGen:   result.ReadyToGenerate,
+		Answer:        result.Answer,
+		TaskStatus:    "",
+		ReadyToGen:    result.ReadyToGenerate,
 		MissingFields: missing,
 	})
 }
@@ -421,8 +427,8 @@ func (h *WorkflowHandler) ValidateTask(w http.ResponseWriter, r *http.Request) {
 	fmt.Printf("[WORKFLOW] ValidateTask sucesso readyToGenerate=%v\n", result.ReadyToGenerate)
 
 	writeJSON(w, http.StatusOK, ProcessMessageResponse{
-		Answer:       result.Answer,
-		ReadyToGen:  result.ReadyToGenerate,
+		Answer:        result.Answer,
+		ReadyToGen:    result.ReadyToGenerate,
 		MissingFields: result.MissingFields,
 	})
 }
@@ -515,11 +521,11 @@ func (h *WorkflowHandler) GetTaskSources(w http.ResponseWriter, r *http.Request)
 	sources := make([]map[string]any, 0, len(hits))
 	for _, hit := range hits {
 		sources = append(sources, map[string]any{
-			"title":       hit.Document.Title,
-			"snippet":     hit.Snippet,
-			"chunkOrd":    hit.Chunk.Ord,
-			"score":       hit.Score,
-			"source":      hit.Document.SourcePath,
+			"title":    hit.Document.Title,
+			"snippet":  hit.Snippet,
+			"chunkOrd": hit.Chunk.Ord,
+			"score":    hit.Score,
+			"source":   hit.Document.SourcePath,
 		})
 	}
 
@@ -714,18 +720,20 @@ func buildTaskResponse(task *service.TaskDetail) TaskResponse {
 	}
 
 	return TaskResponse{
-		ID:            task.Task.ID,
-		Intent:        string(task.Task.Intent),
-		Procedure:     task.Task.Procedure,
-		Status:        string(task.Task.Status),
+		ID:              task.Task.ID,
+		Intent:          string(task.Task.Intent),
+		Procedure:       task.Task.Procedure,
+		Status:          string(task.Task.Status),
 		OriginalRequest: task.Task.OriginalRequest,
-		TemplateID:    task.Task.TemplateID,
-		Requirements:  reqs,
-		Data:          task.Data,
-		Template:      tpl,
-		MissingFields: task.MissingFields,
-		CreatedAt:     task.Task.CreatedAt,
-		UpdatedAt:     task.Task.UpdatedAt,
+		TemplateID:      task.Task.TemplateID,
+		Requirements:    reqs,
+		Data:            task.Data,
+		Template:        tpl,
+		MissingFields:   task.MissingFields,
+		CreatedAt:       task.Task.CreatedAt,
+		UpdatedAt:       task.Task.UpdatedAt,
+		Deadline:        task.Task.Deadline,
+		Priority:        task.Task.Priority,
 	}
 }
 
@@ -733,10 +741,10 @@ func buildTemplateResponse(tmpl models.DocumentTemplate, fields []models.Templat
 	fieldResponses := make([]TemplateFieldResponse, 0, len(fields))
 	for _, f := range fields {
 		fieldResponses = append(fieldResponses, TemplateFieldResponse{
-			FieldName:        f.FieldName,
-			Label:            f.Label,
-			Type:             string(f.Type),
-			Required:         f.Required,
+			FieldName:         f.FieldName,
+			Label:             f.Label,
+			Type:              string(f.Type),
+			Required:          f.Required,
 			NormativeDocument: f.NormativeDocument,
 		})
 	}
@@ -851,4 +859,116 @@ func (h *WorkflowHandler) ListHistory(w http.ResponseWriter, r *http.Request) {
 	fmt.Printf("[WORKFLOW] ListHistory sucesso: %d items\n", len(items))
 
 	writeJSON(w, http.StatusOK, map[string]any{"history": items})
+}
+
+// UpdateTaskStatusRequest represents the request body for updating task status.
+type UpdateTaskStatusRequest struct {
+	Status string `json:"status"`
+}
+
+// PATCH /api/tasks/{id}/status
+func (h *WorkflowHandler) UpdateTaskStatus(w http.ResponseWriter, r *http.Request) {
+	taskID := r.PathValue("id")
+	fmt.Printf("[WORKFLOW] UpdateTaskStatus taskID=%s\n", taskID)
+	if taskID == "" {
+		fmt.Println("[WORKFLOW] UpdateTaskStatus taskID vazio")
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "task id is required"})
+		return
+	}
+
+	employeeID := r.Context().Value("employee_id").(string)
+	task, err := h.svc.GetTask(r.Context(), taskID)
+	if err != nil {
+		fmt.Printf("[WORKFLOW] UpdateTaskStatus erro get task: %v\n", err)
+		if err == service.ErrTaskNotFound {
+			writeJSON(w, http.StatusNotFound, map[string]string{"error": "task not found"})
+			return
+		}
+		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": err.Error()})
+		return
+	}
+	if task.Task.EmployeeID != employeeID {
+		fmt.Printf("[WORKFLOW] UpdateTaskStatus ownership denied: task employee=%s, request employee=%s\n", task.Task.EmployeeID, employeeID)
+		writeJSON(w, http.StatusNotFound, map[string]string{"error": "task not found"})
+		return
+	}
+
+	var body UpdateTaskStatusRequest
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		fmt.Printf("[WORKFLOW] UpdateTaskStatus erro decode JSON: %v\n", err)
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid JSON body"})
+		return
+	}
+
+	if body.Status == "" {
+		fmt.Println("[WORKFLOW] UpdateTaskStatus status vazio")
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "status is required"})
+		return
+	}
+
+	// Validate status
+	validStatuses := map[string]bool{
+		"detected": true, "collecting_data": true, "validating": true,
+		"ready_to_generate": true, "generating": true, "generated": true,
+		"needs_review": true, "completed": true, "blocked": true,
+	}
+	if !validStatuses[body.Status] {
+		fmt.Printf("[WORKFLOW] UpdateTaskStatus status inválido: %s\n", body.Status)
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid status"})
+		return
+	}
+
+	status := models.TaskStatus(body.Status)
+	if err := h.svc.UpdateTaskStatus(r.Context(), taskID, status); err != nil {
+		fmt.Printf("[WORKFLOW] UpdateTaskStatus erro: %v\n", err)
+		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": err.Error()})
+		return
+	}
+	fmt.Printf("[WORKFLOW] UpdateTaskStatus sucesso taskID=%s status=%s\n", taskID, status)
+
+	writeJSON(w, http.StatusOK, map[string]string{"status": "ok"})
+}
+
+// DELETE /api/tasks/{id}
+func (h *WorkflowHandler) DeleteTask(w http.ResponseWriter, r *http.Request) {
+	taskID := r.PathValue("id")
+	fmt.Printf("[WORKFLOW] DeleteTask taskID=%s\n", taskID)
+	if taskID == "" {
+		fmt.Println("[WORKFLOW] DeleteTask taskID vazio")
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "task id is required"})
+		return
+	}
+
+	employeeID := r.Context().Value("employee_id").(string)
+	task, err := h.svc.GetTask(r.Context(), taskID)
+	if err != nil {
+		fmt.Printf("[WORKFLOW] DeleteTask erro get task: %v\n", err)
+		if err == service.ErrTaskNotFound {
+			writeJSON(w, http.StatusNotFound, map[string]string{"error": "task not found"})
+			return
+		}
+		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": err.Error()})
+		return
+	}
+	if task.Task.EmployeeID != employeeID {
+		fmt.Printf("[WORKFLOW] DeleteTask ownership denied: task employee=%s, request employee=%s\n", task.Task.EmployeeID, employeeID)
+		writeJSON(w, http.StatusNotFound, map[string]string{"error": "task not found"})
+		return
+	}
+
+	// Only allow deletion of manual tasks
+	if task.Task.Origin != "manual" {
+		fmt.Printf("[WORKFLOW] DeleteTask denied: task origin=%s is not manual\n", task.Task.Origin)
+		writeJSON(w, http.StatusForbidden, map[string]string{"error": "only manual tasks can be deleted"})
+		return
+	}
+
+	if err := h.svc.DeleteTask(r.Context(), taskID); err != nil {
+		fmt.Printf("[WORKFLOW] DeleteTask erro: %v\n", err)
+		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": err.Error()})
+		return
+	}
+	fmt.Printf("[WORKFLOW] DeleteTask sucesso taskID=%s\n", taskID)
+
+	writeJSON(w, http.StatusOK, map[string]string{"status": "ok"})
 }

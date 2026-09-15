@@ -1,6 +1,6 @@
 # Smart Login Foundation
 
-**ABIS** — *Agentic Banking Intelligence System*: um assistente inteligente corporativo para o contexto bancário da Organização Bradesco.
+**ABIS** — _Agentic Banking Intelligence System_: um assistente inteligente corporativo para o contexto bancário da Organização Bradesco.
 
 Este repositório contém o MVP completo do ABIS, incluindo autenticação, dashboard, chat com RAG (busca semântica em normativos), geração de documentos e histórico de interações.
 
@@ -60,16 +60,19 @@ O backend do ABIS fica na pasta `backend/` e expõe a API usada pelo frontend.
 ### Endpoints
 
 #### Autenticação
+
 - `POST /api/login`: autentica RE e senha, retorna token JWT.
 - `GET /api/me`: retorna dados do funcionário autenticado.
 - `POST /api/logout`: encerra a sessão.
 
 #### Chat (RAG)
+
 - `POST /api/chat`: recebe uma pergunta, executa o pipeline RAG (busca FTS5 + LLM) e devolve a resposta com fontes. Se a pergunta contém palavras como "documento", gera automaticamente um DOCX/PDF.
 - `POST /api/chat/generate-document`: gera um documento sob demanda a partir de uma pergunta.
 - `GET /api/search`: busca normativos via FTS5 (BM25).
 
 #### Workflow (tarefas e documentos)
+
 - `POST /api/tasks`: cria uma nova tarefa a partir de uma pergunta.
 - `GET /api/tasks/{id}`: retorna detalhes da tarefa.
 - `POST /api/tasks/{id}/process`: inicia o processamento da tarefa.
@@ -126,12 +129,12 @@ O frontend sobe em `http://localhost:8080` (ou porta indicada pelo Vite).
 
 ### Comandos úteis
 
-| Comando          | Descrição                                      |
-| ---------------- | ---------------------------------------------- |
-| `npm run dev`    | Inicia o servidor de desenvolvimento Vite.     |
-| `npm run build`  | Gera a build de produção (Nitro).              |
-| `npm run lint`   | Executa o ESLint.                              |
-| `npm run format` | Formata o código com Prettier.                 |
+| Comando          | Descrição                                  |
+| ---------------- | ------------------------------------------ |
+| `npm run dev`    | Inicia o servidor de desenvolvimento Vite. |
+| `npm run build`  | Gera a build de produção (Nitro).          |
+| `npm run lint`   | Executa o ESLint.                          |
+| `npm run format` | Formata o código com Prettier.             |
 
 ## Desenvolvimento
 
@@ -197,6 +200,6 @@ O ABIS usa SQLite (via `modernc.org/sqlite`, driver pure-Go sem CGO). As tabelas
 - `workflow_tasks` / `workflow_data` / `workflow_requirements`: tarefas e coleta de dados.
 - `document_templates` / `template_fields`: templates de documentos.
 - `document_runs` / `document_sources`: execuções e fontes de documentos gerados.
-- `history_view`: *view* unificada de histórico (chat + tarefas + documentos).
+- `history_view`: _view_ unificada de histórico (chat + tarefas + documentos).
 
 As migrations são idempotentes e rodam automaticamente na inicialização do backend.

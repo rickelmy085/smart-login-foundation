@@ -16,21 +16,21 @@ import (
 	"github.com/bsmart/abis/internal/models"
 	"github.com/bsmart/abis/internal/repository"
 
+	"github.com/bsmart/abis/internal/rules"
 	"github.com/bsmart/abis/internal/service/docgen"
 	"github.com/bsmart/abis/internal/service/intent"
 	"github.com/bsmart/abis/internal/service/requirements"
-	"github.com/bsmart/abis/internal/rules"
 
 	"github.com/google/uuid"
 )
 
 var (
-	ErrTaskNotFound      = errors.New("task not found")
-	ErrTemplateNotFound  = errors.New("template not found")
-	ErrMissingData       = errors.New("missing required data")
-	ErrInvalidIntent     = errors.New("invalid intent")
-	ErrValidationFailed  = errors.New("validation failed")
-	ErrNoNormativeBase   = errors.New("no normative base found")
+	ErrTaskNotFound     = errors.New("task not found")
+	ErrTemplateNotFound = errors.New("template not found")
+	ErrMissingData      = errors.New("missing required data")
+	ErrInvalidIntent    = errors.New("invalid intent")
+	ErrValidationFailed = errors.New("validation failed")
+	ErrNoNormativeBase  = errors.New("no normative base found")
 )
 
 // AuditEvent represents a structured audit log entry.
@@ -60,12 +60,12 @@ type WorkflowService struct {
 	repo     *repository.WorkflowRepo
 	searcher *knowledge.Searcher
 
-	intentClassifier   *intent.Classifier
-	reqExtractor       *requirements.Extractor
-	docGenerator       *docgen.Generator
-	rulesEngine        *rules.RuleEngine
-	docEngineEnabled   bool
-	docEngineFallback  bool
+	intentClassifier  *intent.Classifier
+	reqExtractor      *requirements.Extractor
+	docGenerator      *docgen.Generator
+	rulesEngine       *rules.RuleEngine
+	docEngineEnabled  bool
+	docEngineFallback bool
 }
 
 func NewWorkflowService(repo *repository.WorkflowRepo, searcher *knowledge.Searcher, g *groq.Client) *WorkflowService {
@@ -261,7 +261,7 @@ func (s *WorkflowService) ExtractData(ctx context.Context, message string, requi
 // --- Workflow Management ---
 
 // CreateTask creates a new workflow task from a user question.
-func (s *WorkflowService) CreateTask(ctx context.Context, employeeID, question string) (string, error) {
+func (s *WorkflowService) CreateTask(ctx context.Context, employeeID, question string, deadline *string, priority string, origin string) (string, error) {
 	classification, err := s.ClassifyIntent(ctx, question)
 	if err != nil {
 		return "", err
@@ -269,19 +269,23 @@ func (s *WorkflowService) CreateTask(ctx context.Context, employeeID, question s
 
 	taskID := uuid.NewString()
 	task := models.WorkflowTask{
-		ID:             taskID,
-		EmployeeID:     employeeID,
-	 Intent:         models.Intent(classification.Intent),
-		Procedure:      classification.Procedure,
-		Status:         models.StatusDetected,
+		ID:              taskID,
+		EmployeeID:      employeeID,
+		Intent:          models.Intent(classification.Intent),
+		Procedure:       classification.Procedure,
+		Status:          models.StatusDetected,
 		OriginalRequest: question,
-		TemplateKey:    classification.TemplateKey,
+		TemplateKey:     classification.TemplateKey,
+		Deadline:        deadline,
+		Priority:        priority,
+		Origin:          origin,
 	}
 
 	if err := s.repo.CreateTask(ctx, task); err != nil {
 		return "", fmt.Errorf("create task: %w", err)
 	}
 
+<<<<<<< HEAD
 	s.auditLog(ctx, AuditEvent{
 		EventType:   "task_created",
 		TaskID:      taskID,
@@ -292,6 +296,9 @@ func (s *WorkflowService) CreateTask(ctx context.Context, employeeID, question s
 	})
 
 	slog.Info("task created", "id", taskID, "intent", classification.Intent, "template_key", classification.TemplateKey)
+=======
+	slog.Info("task created", "id", taskID, "intent", classification.Intent, "template_key", classification.TemplateKey, "deadline", deadline, "priority", priority, "origin", origin)
+>>>>>>> a424274 (feat(fullstack): enhance workflow management with priority and deadlines)
 
 	// Record metrics
 	metrics.GlobalMetrics.RecordWorkflowTaskCreated()
@@ -333,12 +340,24 @@ func (s *WorkflowService) GetTask(ctx context.Context, taskID string) (*TaskDeta
 	return detail, nil
 }
 
+// UpdateTaskStatus updates the status of a task (e.g., to mark as completed).
+func (s *WorkflowService) UpdateTaskStatus(ctx context.Context, taskID string, status models.TaskStatus) error {
+	if _, err := s.repo.GetTask(ctx, taskID); err != nil {
+		if err == sql.ErrNoRows {
+			return ErrTaskNotFound
+		}
+		return err
+	}
+
+	return s.repo.UpdateTaskStatus(ctx, taskID, status, "")
+}
+
 // TaskDetail is the full view of a task for the frontend.
 type TaskDetail struct {
-	Task         models.WorkflowTask
-	Requirements []models.WorkflowRequirement
-	Data         map[string]string
-	Template     *models.DocumentTemplate
+	Task          models.WorkflowTask
+	Requirements  []models.WorkflowRequirement
+	Data          map[string]string
+	Template      *models.DocumentTemplate
 	MissingFields []MissingField
 }
 
@@ -437,10 +456,10 @@ func (s *WorkflowService) StartProcessing(ctx context.Context, taskID string) (*
 
 	if len(hits) == 0 {
 		return &ProcessingResult{
-			TaskID:    taskID,
-			Answered:  true,
-			Message:   "Os normativos disponíveis não trazem informação suficiente para concluir esta etapa com segurança.",
-			Mode:      "knowledge_query",
+			TaskID:   taskID,
+			Answered: true,
+			Message:  "Os normativos disponíveis não trazem informação suficiente para concluir esta etapa com segurança.",
+			Mode:     "knowledge_query",
 		}, nil
 	}
 
@@ -675,16 +694,16 @@ func (s *WorkflowService) ValidateAndProceed(ctx context.Context, taskID string)
 	// Persist rule evaluations (convert rules types to models types)
 	for _, result := range evalResults {
 		modelResult := models.RuleEvaluationResult{
-			RuleID:        result.RuleID,
-			RuleName:      result.RuleName,
-			Status:        models.RuleStatus(result.Status),
-			Message:       result.Message,
+			RuleID:   result.RuleID,
+			RuleName: result.RuleName,
+			Status:   models.RuleStatus(result.Status),
+			Message:  result.Message,
 			Input: models.RuleInput{
-				FieldName:   result.Input.FieldName,
-				Value:       result.Input.Value,
-				ValueType:   string(result.Input.ValueType),
-				Required:    result.Input.Required,
-				Missing:     result.Input.Missing,
+				FieldName: result.Input.FieldName,
+				Value:     result.Input.Value,
+				ValueType: string(result.Input.ValueType),
+				Required:  result.Input.Required,
+				Missing:   result.Input.Missing,
 			},
 			ExpectedValue: result.ExpectedValue,
 			ActualValue:   result.ActualValue,
@@ -732,7 +751,7 @@ func (s *WorkflowService) ValidateAndProceed(ctx context.Context, taskID string)
 			return nil, err
 		}
 		return &MessageResult{
-			Answer: "Esta solicitação requer revisão manual antes de prosseguir.",
+			Answer:          "Esta solicitação requer revisão manual antes de prosseguir.",
 			ReadyToGenerate: false,
 		}, nil
 
@@ -871,9 +890,20 @@ func (s *WorkflowService) ListTemplates(ctx context.Context) ([]models.DocumentT
 	return s.repo.ListTemplates(ctx)
 }
 
+// DeleteTask deletes a task by ID (ownership must be verified before calling).
+func (s *WorkflowService) DeleteTask(ctx context.Context, taskID string) error {
+	if _, err := s.repo.GetTask(ctx, taskID); err != nil {
+		if err == sql.ErrNoRows {
+			return ErrTaskNotFound
+		}
+		return err
+	}
+	return s.repo.DeleteTask(ctx, taskID)
+}
+
 // HandleDocumentRequest is the unified document generation pipeline.
 func (s *WorkflowService) HandleDocumentRequest(ctx context.Context, employeeID, question string) (*DocumentRequestResult, error) {
-	taskID, err := s.CreateTask(ctx, employeeID, question)
+	taskID, err := s.CreateTask(ctx, employeeID, question, nil, "", "workflow")
 	if err != nil {
 		return nil, fmt.Errorf("create task: %w", err)
 	}
@@ -939,21 +969,21 @@ type DocumentRequestResult struct {
 
 // ProcessingResult is the result of processing a task.
 type ProcessingResult struct {
-	TaskID        string
-	Requirements  []models.WorkflowRequirement
-	Template      *models.DocumentTemplate
-	Answered      bool
-	Blocked       bool
-	Message       string
-	Sources       []knowledge.SearchHit
-	Mode          string
+	TaskID       string
+	Requirements []models.WorkflowRequirement
+	Template     *models.DocumentTemplate
+	Answered     bool
+	Blocked      bool
+	Message      string
+	Sources      []knowledge.SearchHit
+	Mode         string
 }
 
 // MessageResult is the result of processing a message in a task.
 type MessageResult struct {
-	Answer           string
-	ReadyToGenerate  bool
-	MissingFields    []MissingField
+	Answer          string
+	ReadyToGenerate bool
+	MissingFields   []MissingField
 }
 
 func formatMissingFieldNames(missing []MissingField) string {

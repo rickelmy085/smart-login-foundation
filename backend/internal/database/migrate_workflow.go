@@ -46,6 +46,9 @@ func MigrateWorkflow(ctx context.Context, db *sql.DB) error {
 			status TEXT NOT NULL DEFAULT 'detected',
 			original_request TEXT NOT NULL,
 			template_id TEXT REFERENCES document_templates(id),
+			deadline TEXT,
+			priority TEXT,
+			origin TEXT NOT NULL DEFAULT 'workflow',
 			created_at TEXT NOT NULL DEFAULT (datetime('now')),
 			updated_at TEXT NOT NULL DEFAULT (datetime('now'))
 		);`,
@@ -269,6 +272,66 @@ func MigrateWorkflow(ctx context.Context, db *sql.DB) error {
 			ON workflow_data(task_id, field_name)
 		`); err != nil {
 			fmt.Printf("[DB] MigrateWorkflow erro creating unique index: %v\n", err)
+			return err
+		}
+	}
+
+	// Add deadline column to workflow_tasks if not exists
+	var hasDeadlineCol bool
+	err = db.QueryRowContext(ctx, `
+		SELECT COUNT(*) > 0 FROM pragma_table_info('workflow_tasks') 
+		WHERE name = 'deadline'
+	`).Scan(&hasDeadlineCol)
+	if err != nil {
+		fmt.Printf("[DB] MigrateWorkflow erro checking deadline column: %v\n", err)
+		return err
+	}
+	if !hasDeadlineCol {
+		fmt.Println("[DB] MigrateWorkflow adicionando coluna deadline em workflow_tasks")
+		if _, err := db.ExecContext(ctx, `
+			ALTER TABLE workflow_tasks ADD COLUMN deadline TEXT
+		`); err != nil {
+			fmt.Printf("[DB] MigrateWorkflow erro adding deadline: %v\n", err)
+			return err
+		}
+	}
+
+	// Add priority column to workflow_tasks if not exists
+	var hasPriorityCol bool
+	err = db.QueryRowContext(ctx, `
+		SELECT COUNT(*) > 0 FROM pragma_table_info('workflow_tasks') 
+		WHERE name = 'priority'
+	`).Scan(&hasPriorityCol)
+	if err != nil {
+		fmt.Printf("[DB] MigrateWorkflow erro checking priority column: %v\n", err)
+		return err
+	}
+	if !hasPriorityCol {
+		fmt.Println("[DB] MigrateWorkflow adicionando coluna priority em workflow_tasks")
+		if _, err := db.ExecContext(ctx, `
+			ALTER TABLE workflow_tasks ADD COLUMN priority TEXT
+		`); err != nil {
+			fmt.Printf("[DB] MigrateWorkflow erro adding priority: %v\n", err)
+			return err
+		}
+	}
+
+	// Add origin column to workflow_tasks if not exists
+	var hasOriginCol bool
+	err = db.QueryRowContext(ctx, `
+		SELECT COUNT(*) > 0 FROM pragma_table_info('workflow_tasks') 
+		WHERE name = 'origin'
+	`).Scan(&hasOriginCol)
+	if err != nil {
+		fmt.Printf("[DB] MigrateWorkflow erro checking origin column: %v\n", err)
+		return err
+	}
+	if !hasOriginCol {
+		fmt.Println("[DB] MigrateWorkflow adicionando coluna origin em workflow_tasks")
+		if _, err := db.ExecContext(ctx, `
+			ALTER TABLE workflow_tasks ADD COLUMN origin TEXT NOT NULL DEFAULT 'workflow'
+		`); err != nil {
+			fmt.Printf("[DB] MigrateWorkflow erro adding origin: %v\n", err)
 			return err
 		}
 	}

@@ -17,11 +17,15 @@ import type {
   DocumentListResponse,
   DocumentSourcesResponse,
   HistoryResponse,
+<<<<<<< HEAD
   WorkflowStepsResponse,
   NextActionResponse,
   AgentResponse,
   AgentPlan,
   AgentToolResult,
+=======
+  TaskPriority,
+>>>>>>> a424274 (feat(fullstack): enhance workflow management with priority and deadlines)
 } from "@/lib/types";
 
 // ---------- Agent API ----------
@@ -74,14 +78,18 @@ export async function agentHumanInput(planId: string, response: string): Promise
 
 // ---------- Task/Workflow API ----------
 
-export async function startTask(question: string): Promise<{
+export async function startTask(
+  question: string,
+  deadline?: string,
+  priority?: TaskPriority,
+): Promise<{
   taskId: string;
   status: string;
   message?: string;
 }> {
   const res = await apiFetch("/api/tasks", {
     method: "POST",
-    body: JSON.stringify({ question }),
+    body: JSON.stringify({ question, deadline, priority }),
   });
   return (await res.json()) as { taskId: string; status: string; message?: string };
 }
@@ -101,10 +109,7 @@ export async function processTask(taskId: string): Promise<ProcessResult> {
   return (await res.json()) as ProcessResult;
 }
 
-export async function sendTaskMessage(
-  taskId: string,
-  message: string
-): Promise<MessageResult> {
+export async function sendTaskMessage(taskId: string, message: string): Promise<MessageResult> {
   const res = await apiFetch(`/api/tasks/${taskId}/message`, {
     method: "POST",
     body: JSON.stringify({ message }),
@@ -115,11 +120,29 @@ export async function sendTaskMessage(
 export async function setTaskData(
   taskId: string,
   fieldName: string,
-  value: string
+  value: string,
 ): Promise<{ status: string }> {
   const res = await apiFetch(`/api/tasks/${taskId}/data`, {
     method: "POST",
     body: JSON.stringify({ fieldName, value }),
+  });
+  return (await res.json()) as { status: string };
+}
+
+export async function updateTaskStatus(
+  taskId: string,
+  status: string,
+): Promise<{ status: string }> {
+  const res = await apiFetch(`/api/tasks/${taskId}/status`, {
+    method: "PATCH",
+    body: JSON.stringify({ status }),
+  });
+  return (await res.json()) as { status: string };
+}
+
+export async function deleteTask(taskId: string): Promise<{ status: string }> {
+  const res = await apiFetch(`/api/tasks/${taskId}`, {
+    method: "DELETE",
   });
   return (await res.json()) as { status: string };
 }
@@ -176,19 +199,14 @@ export async function listDocuments(): Promise<DocumentListResponse> {
   return (await res.json()) as DocumentListResponse;
 }
 
-export async function getDocumentSources(
-  documentRunId: string
-): Promise<DocumentSourcesResponse> {
+export async function getDocumentSources(documentRunId: string): Promise<DocumentSourcesResponse> {
   const res = await apiFetch(`/api/documents/${documentRunId}/sources`, {
     method: "GET",
   });
   return (await res.json()) as DocumentSourcesResponse;
 }
 
-export async function downloadDocument(
-  path: string,
-  filename: string
-): Promise<void> {
+export async function downloadDocument(path: string, filename: string): Promise<void> {
   const token = getToken();
   const headers: Record<string, string> = {};
   if (token) {
@@ -225,7 +243,7 @@ export async function downloadDocument(
 
 export async function sendQuestion(
   question: string,
-  allowWebSearch = false
+  allowWebSearch = false,
 ): Promise<ChatResponse> {
   const res = await apiFetch("/api/chat", {
     method: "POST",
@@ -261,7 +279,11 @@ export async function listHistory(): Promise<HistoryResponse> {
 
 // ---------- Auth API ----------
 
-export async function login(re: string, password: string, remember = false): Promise<{
+export async function login(
+  re: string,
+  password: string,
+  remember = false,
+): Promise<{
   token: string;
   session: { id: string; employeeId: string; expiresAt: string; createdAt: string };
   employee: { id: string; re: string; name: string; role: string; email: string };
@@ -277,9 +299,13 @@ export async function login(re: string, password: string, remember = false): Pro
   };
 }
 
-export async function me(): Promise<{ employee: { id: string; re: string; name: string; role: string; email: string } }> {
+export async function me(): Promise<{
+  employee: { id: string; re: string; name: string; role: string; email: string };
+}> {
   const res = await apiFetch("/api/me", { method: "GET" });
-  return (await res.json()) as { employee: { id: string; re: string; name: string; role: string; email: string } };
+  return (await res.json()) as {
+    employee: { id: string; re: string; name: string; role: string; email: string };
+  };
 }
 
 export async function logout(): Promise<{ message: string }> {

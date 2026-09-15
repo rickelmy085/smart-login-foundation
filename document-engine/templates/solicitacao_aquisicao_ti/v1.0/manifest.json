@@ -12,10 +12,6 @@
     "justificativa",
     "categoria_produto"
   ],
-  "optional_fields": [
-    "numero_solicitacao",
-    "aprovacao_cade",
-    "observacoes"
-  ],
+  "optional_fields": ["numero_solicitacao", "aprovacao_cade", "observacoes"],
   "formats": ["docx", "pdf"]
 }

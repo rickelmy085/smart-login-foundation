@@ -32,8 +32,16 @@ export const Route = createFileRoute("/")({
 });
 
 const highlights = [
-  { icon: Sparkles, title: "Inteligência operacional", text: "Conhecimento corporativo em linguagem natural." },
-  { icon: ShieldCheck, title: "Segurança bancária", text: "Acesso restrito a colaboradores autorizados." },
+  {
+    icon: Sparkles,
+    title: "Inteligência operacional",
+    text: "Conhecimento corporativo em linguagem natural.",
+  },
+  {
+    icon: ShieldCheck,
+    title: "Segurança bancária",
+    text: "Acesso restrito a colaboradores autorizados.",
+  },
   { icon: Zap, title: "Produtividade", text: "Menos busca, mais decisão no dia a dia." },
 ];
 

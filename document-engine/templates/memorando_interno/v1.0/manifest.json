@@ -12,9 +12,6 @@
     "objetivo",
     "conteudo"
   ],
-  "optional_fields": [
-    "numero_documento",
-    "observacoes"
-  ],
+  "optional_fields": ["numero_documento", "observacoes"],
   "formats": ["docx", "pdf"]
 }

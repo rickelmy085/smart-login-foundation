@@ -170,6 +170,8 @@ export type MissingField = {
   required: boolean;
 };
 
+export type TaskPriority = "baixa" | "media" | "alta" | "urgente";
+
 export type Task = {
   id: string;
   intent: Intent;
@@ -183,6 +185,8 @@ export type Task = {
   missingFields?: MissingField[];
   createdAt: string;
   updatedAt: string;
+  deadline?: string;
+  priority?: TaskPriority;
 };
 
 export type DocumentRun = {

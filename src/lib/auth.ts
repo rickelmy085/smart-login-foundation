@@ -42,7 +42,10 @@ export async function login(re: string, password: string): Promise<LoginResult> 
     saveSession(session, true);
     return { ok: true, session };
   } catch (error) {
-    const message = error instanceof Error ? error.message : "RE ou senha inválidos. Verifique os dados e tente novamente.";
+    const message =
+      error instanceof Error
+        ? error.message
+        : "RE ou senha inválidos. Verifique os dados e tente novamente.";
     return { ok: false, message };
   }
 }
