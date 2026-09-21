@@ -1,4 +1,4 @@
-# Smart Login Foundation
+# ABIS
 
 **ABIS** — _Agentic Banking Intelligence System_: um assistente inteligente corporativo para o contexto bancário da Organização Bradesco.
 
